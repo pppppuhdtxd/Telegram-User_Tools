@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scheduled Sender — Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:          #0d0f14;
+    --surface:     #13161e;
+    --surface2:    #1a1e2a;
+    --surface3:    #222637;
+    --border:      #2a2f42;
+    --border2:     #353b54;
+    --text:        #e8eaf0;
+    --text2:       #8b91a8;
+    --text3:       #5a6080;
+    --accent:      #4f8ef7;
+    --accent2:     #3d6fd4;
+    --accent-glow: rgba(79,142,247,0.18);
+    --green:       #34d399;
+    --green-dim:   rgba(52,211,153,0.12);
+    --red:         #f87171;
+    --red-dim:     rgba(248,113,113,0.12);
+    --yellow:      #fbbf24;
+    --yellow-dim:  rgba(251,191,36,0.12);
+    --purple:      #a78bfa;
+    --orange:      #fb923c;
+    --orange-dim:  rgba(251,146,60,0.12);
+    --radius:      10px;
+    --radius-lg:   16px;
+    --shadow:      0 4px 24px rgba(0,0,0,0.4);
+    --shadow-lg:   0 8px 48px rgba(0,0,0,0.6);
+    --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+    --tr:          180ms cubic-bezier(0.4,0,0.2,1);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; line-height: 1.5; font-size: 14px; overflow-x: hidden;
+  }
+
+  /* ── Layout ── */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
+  .logo-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+  }
+
+  .header-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); margin-left: auto; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); transition: background var(--tr); }
+  .status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+  .main { display: grid; grid-template-columns: 280px 1fr; flex: 1; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; min-height: calc(100vh - 56px);
+  }
+  .sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text3); margin-bottom: 10px; padding: 0 4px;
+  }
+  .account-list { display: flex; flex-direction: column; gap: 4px; }
+  .account-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: var(--radius); cursor: pointer; transition: background var(--tr);
+    border: 1px solid transparent;
+  }
+  .account-item:hover { background: var(--surface2); }
+  .account-item.active { background: var(--accent-glow); border-color: rgba(79,142,247,0.3); }
+  .account-avatar {
+    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent2), var(--purple));
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; color: white;
+  }
+  .account-info { flex: 1; min-width: 0; }
+  .account-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .account-sub  { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .account-badge {
+    font-size: 10px; background: var(--green-dim); color: var(--green);
+    padding: 2px 6px; border-radius: 20px; font-weight: 600;
+    border: 1px solid rgba(52,211,153,0.2); white-space: nowrap;
+  }
+  .account-badge.offline { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,0.2); }
+  .account-del {
+    width: 24px; height: 24px; border: none; background: transparent; color: var(--text3);
+    cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; opacity: 0; transition: all var(--tr);
+  }
+  .account-item:hover .account-del { opacity: 1; }
+  .account-del:hover { background: var(--red-dim); color: var(--red); }
+
+  /* ── Content ── */
+  .content { padding: 28px; overflow-y: auto; }
+  .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 16px; }
+  .page-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .page-sub { color: var(--text2); font-size: 13px; margin-top: 3px; }
+
+  /* ── Config Cards ── */
+  .config-grid { display: flex; flex-direction: column; gap: 14px; }
+
+  .config-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden; transition: border-color var(--tr);
+    position: relative;
+  }
+  .config-card:hover { border-color: var(--border2); }
+
+  .config-card-accent {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  }
+  .mode-1 { background: linear-gradient(to bottom, var(--accent), #818cf8); }
+  .mode-2 { background: linear-gradient(to bottom, var(--purple), var(--accent)); }
+  .mode-3 { background: linear-gradient(to bottom, var(--orange), var(--red)); }
+
+  .config-inner { padding: 16px 16px 16px 20px; }
+
+  .config-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .config-id {
+    font-family: var(--font-mono); font-size: 11px; color: var(--accent);
+    background: var(--accent-glow); padding: 2px 8px; border-radius: 20px;
+    border: 1px solid rgba(79,142,247,0.2); font-weight: 600;
+  }
+  .mode-badge {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
+  }
+  .mode-badge-1 { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(79,142,247,0.2); }
+  .mode-badge-2 { background: rgba(167,139,250,0.12); color: var(--purple); border: 1px solid rgba(167,139,250,0.2); }
+  .mode-badge-3 { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(251,146,60,0.2); }
+
+  .config-chat { font-family: var(--font-mono); font-size: 12px; color: var(--text2); flex: 1; }
+  .config-actions { display: flex; gap: 4px; margin-left: auto; }
+
+  .config-message {
+    font-size: 12px; color: var(--text2); background: var(--surface3);
+    padding: 8px 12px; border-radius: 6px; margin-bottom: 12px;
+    white-space: pre-wrap; word-break: break-word;
+    max-height: 58px; overflow: hidden; line-height: 1.5;
+  }
+
+  .config-stats { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .stat-chip {
+    display: flex; align-items: center; gap: 5px; font-size: 11px;
+    color: var(--text2); background: var(--surface3); padding: 4px 10px;
+    border-radius: 20px; border: 1px solid var(--border);
+  }
+  .stat-chip .lbl { color: var(--text3); margin-right: 2px; }
+  .stat-chip .val { color: var(--text); font-weight: 600; font-family: var(--font-mono); }
+
+  .running-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--green-dim); color: var(--green);
+    border: 1px solid rgba(52,211,153,0.2); padding: 4px 10px;
+    border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+  .running-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+  .stopped-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--surface3); color: var(--text3);
+    border: 1px solid var(--border); padding: 4px 10px;
+    border-radius: 20px; font-size: 11px; font-weight: 600;
+  }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 8px 16px; border-radius: var(--radius); font-size: 13px; font-weight: 600;
+    cursor: pointer; border: none; transition: all var(--tr); white-space: nowrap;
+    font-family: inherit; line-height: 1;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+  .btn-primary  { background: var(--accent); color: white; }
+  .btn-primary:hover  { background: #5a99ff; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(79,142,247,0.3); }
+  .btn-secondary { background: var(--surface3); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-danger    { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
+  .btn-danger:hover   { background: rgba(248,113,113,0.25); }
+  .btn-success   { background: var(--green-dim); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+  .btn-success:hover  { background: rgba(52,211,153,0.25); }
+  .btn-orange    { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(251,146,60,0.2); }
+  .btn-orange:hover   { background: rgba(251,146,60,0.25); }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
+  .icon-btn {
+    width: 28px; height: 28px; border: none; background: transparent; color: var(--text2);
+    cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; transition: background var(--tr), color var(--tr);
+  }
+  .icon-btn:hover { background: var(--surface3); color: var(--text); }
+  .icon-btn.danger:hover { background: var(--red-dim); color: var(--red); }
+
+  /* ── Forms ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.span2 { grid-column: 1 / -1; }
+  label { font-size: 12px; font-weight: 600; color: var(--text2); letter-spacing: 0.01em; }
+  input, select, textarea {
+    background: var(--surface3); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-family: inherit; font-size: 13px; padding: 9px 12px; width: 100%;
+    transition: border-color var(--tr), box-shadow var(--tr); outline: none; -webkit-appearance: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  input::placeholder, textarea::placeholder { color: var(--text3); }
+  textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+  .field-hint { font-size: 11px; color: var(--text3); }
+  select option { background: var(--surface2); }
+
+  /* ── Mode selector ── */
+  .mode-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  .mode-tab {
+    padding: 6px 14px; border-radius: var(--radius); font-size: 12px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface3); color: var(--text2);
+    transition: all var(--tr);
+  }
+  .mode-tab:hover { border-color: var(--border2); color: var(--text); }
+  .mode-tab.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent); }
+  .mode-desc { font-size: 12px; color: var(--text2); padding: 8px 12px; background: var(--surface3); border-radius: var(--radius); margin-bottom: 4px; }
+
+  /* ── Modal ── */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+    z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity var(--tr);
+  }
+  .modal-backdrop.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius-lg);
+    width: 100%; max-width: 540px; box-shadow: var(--shadow-lg);
+    transform: translateY(12px) scale(0.98); transition: transform var(--tr);
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal-backdrop.open .modal { transform: translateY(0) scale(1); }
+  .modal-header {
+    padding: 20px 24px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0;
+    background: var(--surface); z-index: 1;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-close {
+    width: 30px; height: 30px; border: none; background: var(--surface3); color: var(--text2);
+    cursor: pointer; border-radius: 8px; font-size: 16px; display: flex; align-items: center; justify-content: center;
+    transition: all var(--tr);
+  }
+  .modal-close:hover { background: var(--red-dim); color: var(--red); }
+  .modal-body { padding: 20px 24px; }
+  .modal-footer {
+    padding: 16px 24px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 10px;
+    position: sticky; bottom: 0; background: var(--surface); z-index: 1;
+  }
+
+  /* ── Auth steps ── */
+  .step { display: none; flex-direction: column; gap: 14px; }
+  .step.active { display: flex; }
+  .step-indicator { display: flex; gap: 8px; margin-bottom: 4px; }
+  .step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border2); transition: background var(--tr); }
+  .step-dot.active { background: var(--accent); }
+  .step-dot.done   { background: var(--green); }
+
+  /* ── Toast ── */
+  #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .toast {
+    background: var(--surface2); border: 1px solid var(--border2); border-radius: var(--radius);
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px; font-size: 13px;
+    box-shadow: var(--shadow); animation: slideIn 220ms cubic-bezier(0.34,1.56,0.64,1) both;
+    min-width: 260px; max-width: 360px; pointer-events: auto;
+  }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error   { border-left: 3px solid var(--red); }
+  .toast.info    { border-left: 3px solid var(--accent); }
+  .toast-icon { font-size: 16px; flex-shrink: 0; }
+  .toast-msg  { flex: 1; line-height: 1.4; }
+  @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes slideOut { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(20px); } }
+
+  /* ── Empty state ── */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 60px 20px; text-align: center; gap: 12px; color: var(--text2);
+  }
+  .empty-icon  { font-size: 40px; opacity: 0.4; }
+  .empty-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .empty-sub   { font-size: 13px; max-width: 280px; }
+
+  /* ── Misc ── */
+  .spinner {
+    width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  .shimmer-line { height: 14px; border-radius: 4px; background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+  @keyframes shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
+
+  @media (max-width: 768px) {
+    .main { grid-template-columns: 1fr; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">📡</div>
+    Scheduled Sender
+  </div>
+  <div class="header-status">
+    <div class="status-dot" id="connection-dot"></div>
+    <span id="connection-label">Connecting...</span>
+  </div>
+</header>
+
+<div class="main">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Accounts</div>
+      <div class="account-list" id="account-list">
+        <div style="padding:20px 0; text-align:center;">
+          <div class="shimmer-line" style="width:80%; margin:0 auto 8px;"></div>
+          <div class="shimmer-line" style="width:60%; margin:0 auto;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <button class="btn btn-primary" style="width:100%;" onclick="openAddAccountModal()">+ Add Account</button>
+    </div>
+  </aside>
+
+  <main class="content" id="main-content">
+    <div class="empty-state" style="height:calc(100vh - 120px);">
+      <div class="empty-icon">📭</div>
+      <div class="empty-title">No Account Selected</div>
+      <div class="empty-sub">Select an account from the sidebar or add a new one to get started.</div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<!-- ── Add Account Modal ── -->
+<div class="modal-backdrop" id="modal-add-account" onclick="backdropClose(event,'modal-add-account')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">Add Account</div>
+      <button class="modal-close" onclick="closeModal('modal-add-account')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="step-indicator">
+        <div class="step-dot active" id="sdot-1"></div>
+        <div class="step-dot" id="sdot-2"></div>
+        <div class="step-dot" id="sdot-3"></div>
+      </div>
+      <div class="step active" id="auth-step-1">
+        <p style="font-size:12px;color:var(--text2);">Get your API credentials at <a href="https://my.telegram.org" target="_blank" style="color:var(--accent)">my.telegram.org</a>.</p>
+        <div class="form-grid">
+          <div class="field"><label>Account Name</label><input id="aa-name" placeholder="e.g. main_account"></div>
+          <div class="field"><label>Phone Number</label><input id="aa-phone" placeholder="+1234567890"></div>
+          <div class="field"><label>API ID</label><input type="number" id="aa-api-id" placeholder="12345678"></div>
+          <div class="field"><label>API Hash</label><input id="aa-api-hash" placeholder="abc123..."></div>
+        </div>
+      </div>
+      <div class="step" id="auth-step-2">
+        <p style="font-size:12px;color:var(--text2);">A code was sent to your Telegram app.</p>
+        <div class="field"><label>Verification Code</label><input id="aa-code" placeholder="12345" maxlength="10"></div>
+      </div>
+      <div class="step" id="auth-step-3">
+        <p style="font-size:12px;color:var(--text2);">2FA is enabled on this account.</p>
+        <div class="field"><label>2FA Password</label><input type="password" id="aa-password" placeholder="••••••••"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-account')">Cancel</button>
+      <button class="btn btn-primary" id="btn-auth-action" onclick="sendCode()">Send Code</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add / Edit Config Modal (shared) ── -->
+<div class="modal-backdrop" id="modal-config" onclick="backdropClose(event,'modal-config')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-config-title">Add Configuration</div>
+      <button class="modal-close" onclick="closeModal('modal-config')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Mode selector -->
+      <div class="field span2" style="margin-bottom:14px;">
+        <label>Mode</label>
+        <div class="mode-tabs" id="cfg-mode-tabs"></div>
+        <div class="mode-desc" id="cfg-mode-desc">Select a mode above.</div>
+      </div>
+      <!-- Dynamic fields injected here -->
+      <div class="form-grid" id="cfg-dynamic-fields"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-config')">Cancel</button>
+      <button class="btn btn-primary" id="btn-cfg-submit" onclick="submitConfig()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+const API = '';
+
+let state = {
+  accounts:       [],
+  activeAccount:  null,
+  currentAccount: null,
+  configs:        [],
+  modes:          [],       // from /api/modes
+  // config modal state
+  configMode:     'add',    // 'add' | 'edit'
+  editConfigId:   null,
+  editAccountName: null,
+  selectedModeId: null,
+};
+
+// Mode descriptions shown in the selector
+const MODE_DESCRIPTIONS = {
+  1: 'Schedules messages at a fixed, repeating interval using Telegram\'s native scheduling queue.',
+  2: 'Alternates between two different intervals for a more natural-looking message pattern.',
+  3: 'Sends a live message, then automatically deletes it after a delay. Runs as a continuous loop with Start/Stop control.',
+};
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+
+function toast(msg, type = 'info') {
+  const icons = { success: '✓', error: '✕', info: 'ℹ' };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="toast-icon">${icons[type]}</span><span class="toast-msg">${escHtml(msg)}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'slideOut 200ms ease forwards';
+    setTimeout(() => el.remove(), 200);
+  }, 4000);
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+
+async function apiCall(path, opts = {}) {
+  const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const d = await res.json();
+  if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+  return d;
+}
+
+function setBtn(id, loading, text) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.disabled = loading;
+  if (loading) {
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML = `<span class="spinner"></span> ${text || 'Loading...'}`;
+  } else {
+    btn.innerHTML = btn.dataset.orig || text || btn.innerHTML;
+  }
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+
+function openModal(id)  { document.getElementById(id).classList.add('open'); document.body.style.overflow = 'hidden'; }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow = ''; }
+function backdropClose(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-backdrop.open').forEach(m => { m.classList.remove('open'); document.body.style.overflow = ''; });
+});
+
+// ── Status ────────────────────────────────────────────────────────────────────
+
+async function refreshStatus() {
+  try {
+    const s = await apiCall('/api/status');
+    document.getElementById('connection-dot').classList.add('online');
+    document.getElementById('connection-label').textContent = 'Connected';
+    state.activeAccount = s.active_account;
+  } catch {
+    document.getElementById('connection-dot').classList.remove('online');
+    document.getElementById('connection-label').textContent = 'Disconnected';
+  }
+}
+
+// ── Modes ─────────────────────────────────────────────────────────────────────
+
+async function loadModes() {
+  try {
+    state.modes = await apiCall('/api/modes');
+  } catch (e) {
+    console.error('Failed to load modes:', e);
+  }
+}
+
+function getModeById(id) {
+  return state.modes.find(m => m.id === id) || null;
+}
+
+// ── Accounts ──────────────────────────────────────────────────────────────────
+
+async function loadAccounts() {
+  try {
+    state.accounts = await apiCall('/api/accounts');
+    renderAccountList();
+    const active = state.accounts.find(a => a.is_active) || state.accounts[0];
+    if (active) await showAccountConfigs(active.name);
+  } catch (e) {
+    document.getElementById('account-list').innerHTML = `<div style="padding:8px;font-size:12px;color:var(--text3)">Failed to load accounts</div>`;
+  }
+}
+
+function renderAccountList() {
+  const list = document.getElementById('account-list');
+  const accounts = state.accounts;
+  if (!accounts.length) {
+    list.innerHTML = `<div class="empty-state" style="padding:20px 0;"><div class="empty-icon" style="font-size:24px;">👤</div><div style="font-size:12px;color:var(--text2);">No accounts yet</div></div>`;
+    return;
+  }
+  list.innerHTML = accounts.map(acc => `
+    <div class="account-item ${acc.is_active ? 'active' : ''}" onclick="switchAccount('${esc(acc.name)}')">
+      <div class="account-avatar">${(acc.display_name || acc.name)[0].toUpperCase()}</div>
+      <div class="account-info">
+        <div class="account-name">${escHtml(acc.name)}</div>
+        <div class="account-sub">${escHtml(acc.display_name || acc.phone || 'Not connected')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+        <span class="account-badge ${acc.connected ? '' : 'offline'}">${acc.connected ? '● Online' : '○ Offline'}</span>
+        <button class="account-del" onclick="event.stopPropagation();deleteAccount('${esc(acc.name)}')" title="Delete account">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function switchAccount(name) {
+  try {
+    await apiCall(`/api/accounts/${name}/switch`, { method: 'POST' });
+    state.activeAccount = name;
+    state.accounts = state.accounts.map(a => ({ ...a, is_active: a.name === name }));
+    renderAccountList();
+    await showAccountConfigs(name);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteAccount(name) {
+  if (!confirm(`Delete account "${name}"? This cannot be undone.`)) return;
+  try {
+    await apiCall(`/api/accounts/${name}`, { method: 'DELETE' });
+    toast(`Account "${name}" deleted`, 'success');
+    await loadAccounts();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ── Auth flow ─────────────────────────────────────────────────────────────────
+
+function openAddAccountModal() {
+  ['aa-name','aa-phone','aa-api-id','aa-api-hash','aa-code','aa-password'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  setAuthStep(1);
+  openModal('modal-add-account');
+}
+
+function setAuthStep(step) {
+  [1,2,3].forEach(i => {
+    document.getElementById(`auth-step-${i}`).classList.toggle('active', i === step);
+    const dot = document.getElementById(`sdot-${i}`);
+    dot.classList.toggle('done', i < step);
+    dot.classList.toggle('active', i === step);
+  });
+  const btn = document.getElementById('btn-auth-action');
+  btn.disabled = false;
+  if (step === 1) { btn.innerHTML = 'Send Code'; btn.onclick = sendCode; }
+  else if (step === 2) { btn.innerHTML = 'Verify Code'; btn.onclick = verifyCode; }
+  else { btn.innerHTML = 'Verify Password'; btn.onclick = verifyPassword; }
+}
+
+async function sendCode() {
+  const btn = document.getElementById('btn-auth-action');
+  if (btn.disabled) return;
+  const name = document.getElementById('aa-name').value.trim();
+  const phone = document.getElementById('aa-phone').value.trim();
+  const apiId = document.getElementById('aa-api-id').value.trim();
+  const apiHash = document.getElementById('aa-api-hash').value.trim();
+  if (!name || !phone || !apiId || !apiHash) { toast('All fields are required', 'error'); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Sending...';
+  try {
+    await apiCall('/api/accounts/send_code', { method: 'POST', body: JSON.stringify({ name, phone, api_id: parseInt(apiId), api_hash: apiHash }) });
+    toast('Code sent!', 'success');
+    setAuthStep(2);
+  } catch (e) { toast(e.message, 'error'); btn.disabled = false; btn.innerHTML = 'Send Code'; }
+}
+
+async function verifyCode() {
+  const phone = document.getElementById('aa-phone').value.trim();
+  const code = document.getElementById('aa-code').value.trim();
+  if (!code) { toast('Enter the code', 'error'); return; }
+  setBtn('btn-auth-action', true, 'Verifying...');
+  try {
+    await apiCall('/api/accounts/verify_code', { method: 'POST', body: JSON.stringify({ phone, code }) });
+    toast('Account added!', 'success');
+    closeModal('modal-add-account');
+    await loadAccounts();
+  } catch (e) {
+    if (e.message === '2FA_REQUIRED') { setAuthStep(3); toast('2FA password required', 'info'); }
+    else { toast(e.message, 'error'); setBtn('btn-auth-action', false); }
+  }
+}
+
+async function verifyPassword() {
+  const phone = document.getElementById('aa-phone').value.trim();
+  const code = document.getElementById('aa-code').value.trim();
+  const password = document.getElementById('aa-password').value.trim();
+  if (!password) { toast('Enter your 2FA password', 'error'); return; }
+  setBtn('btn-auth-action', true, 'Verifying...');
+  try {
+    await apiCall('/api/accounts/verify_code', { method: 'POST', body: JSON.stringify({ phone, code, password }) });
+    toast('Account added!', 'success');
+    closeModal('modal-add-account');
+    await loadAccounts();
+  } catch (e) { toast(e.message, 'error'); setBtn('btn-auth-action', false); }
+}
+
+// ── Config display ────────────────────────────────────────────────────────────
+
+async function showAccountConfigs(accountName) {
+  state.currentAccount = accountName;
+  const content = document.getElementById('main-content');
+  content.innerHTML = `<div class="empty-state" style="height:200px;"><div style="font-size:12px;color:var(--text2);">Loading...</div></div>`;
+  try {
+    const configs = await apiCall(`/api/accounts/${accountName}/configs`);
+    state.configs = configs;
+    renderConfigs(accountName, configs);
+    configs.forEach(cfg => loadScheduledCount(accountName, cfg.id, cfg));
+  } catch (e) {
+    content.innerHTML = `<div class="empty-state" style="height:200px;"><div style="color:var(--red);">${escHtml(e.message)}</div></div>`;
+  }
+}
+
+function modeBadgeClass(modeId) {
+  const m = { 1: 'mode-badge-1', 2: 'mode-badge-2', 3: 'mode-badge-3' };
+  return m[modeId] || 'mode-badge-1';
+}
+
+function modeAccentClass(modeId) {
+  const m = { 1: 'mode-1', 2: 'mode-2', 3: 'mode-3' };
+  return m[modeId] || 'mode-1';
+}
+
+function renderConfigSummaryStats(cfg) {
+  const mode = cfg.mode || 1;
+  const chips = [];
+  if (mode === 1) {
+    chips.push(`<div class="stat-chip"><span class="lbl">Interval</span><span class="val">${cfg.interval}m</span></div>`);
+    chips.push(`<div class="stat-chip"><span class="lbl">Batch</span><span class="val">${cfg.batch_size}</span></div>`);
+  } else if (mode === 2) {
+    chips.push(`<div class="stat-chip"><span class="lbl">Int 1</span><span class="val">${cfg.interval1}m</span></div>`);
+    chips.push(`<div class="stat-chip"><span class="lbl">Int 2</span><span class="val">${cfg.interval2}m</span></div>`);
+    chips.push(`<div class="stat-chip"><span class="lbl">Batch</span><span class="val">${cfg.batch_size}</span></div>`);
+  } else if (mode === 3) {
+    chips.push(`<div class="stat-chip"><span class="lbl">Send every</span><span class="val">${cfg.send_interval}s</span></div>`);
+    chips.push(`<div class="stat-chip"><span class="lbl">Delete after</span><span class="val">${cfg.delete_delay}s</span></div>`);
+    chips.push(`<div class="stat-chip"><span class="lbl">Cycles</span><span class="val">${cfg.batch_size || '∞'}</span></div>`);
+  }
+  return chips.join('');
+}
+
+function renderConfigCard(accountName, cfg) {
+  const modeId = cfg.mode || 1;
+  const modeLabel = cfg.mode_label || `Mode ${modeId}`;
+  const supportsRefill = cfg.supports_refill;
+  const supportsStartStop = cfg.supports_start_stop;
+
+  const actionBtns = [];
+  if (supportsRefill) {
+    actionBtns.push(`<button class="btn btn-sm btn-success" onclick="refillConfig('${esc(accountName)}','${cfg.id}')" id="btn-refill-${cfg.id}">↻ Refill</button>`);
+  }
+  if (supportsStartStop) {
+    actionBtns.push(`<button class="btn btn-sm btn-success" onclick="startConfig('${esc(accountName)}','${cfg.id}')" id="btn-start-${cfg.id}">▶ Start</button>`);
+    actionBtns.push(`<button class="btn btn-sm btn-danger" onclick="stopConfig('${esc(accountName)}','${cfg.id}')" id="btn-stop-${cfg.id}">■ Stop</button>`);
+  }
+  actionBtns.push(`<button class="icon-btn" onclick="openEditConfigModal('${esc(accountName)}','${cfg.id}')" title="Edit">✎</button>`);
+  actionBtns.push(`<button class="icon-btn danger" onclick="deleteConfig('${esc(accountName)}','${cfg.id}')" title="Delete">🗑</button>`);
+
+  return `
+    <div class="config-card" id="config-card-${cfg.id}">
+      <div class="config-card-accent ${modeAccentClass(modeId)}"></div>
+      <div class="config-inner">
+        <div class="config-top">
+          <span class="config-id">#${cfg.id}</span>
+          <span class="mode-badge ${modeBadgeClass(modeId)}">${escHtml(modeLabel)}</span>
+          <span class="config-chat">📍 <code style="font-size:12px;">${cfg.chat_id}</code></span>
+          <div class="config-actions">${actionBtns.join('')}</div>
+        </div>
+        <div class="config-message">${escHtml(cfg.message)}</div>
+        <div class="config-stats" id="stats-${cfg.id}">
+          ${renderConfigSummaryStats(cfg)}
+          <div id="count-chip-${cfg.id}" style="display:inline-flex;align-items:center;">
+            <div class="stat-chip"><span class="lbl">Scheduled</span><span class="val" style="opacity:0.4;">…</span></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderConfigs(accountName, configs) {
+  const acc = state.accounts.find(a => a.name === accountName);
+  const content = document.getElementById('main-content');
+  content.innerHTML = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">
+          ${escHtml(acc?.display_name || accountName)}
+          <span style="font-size:13px;vertical-align:middle;margin-left:8px;" class="${acc?.connected ? 'running-badge' : 'stopped-badge'}">
+            ${acc?.connected ? '<span class="running-dot"></span> Online' : '○ Offline'}
+          </span>
+        </div>
+        <div class="page-sub">${configs.length} config${configs.length !== 1 ? 's' : ''} · ${escHtml(acc?.phone || '')}</div>
+      </div>
+      <button class="btn btn-primary" onclick="openAddConfigModal('${esc(accountName)}')">+ Add Config</button>
+    </div>
+    <div class="config-grid" id="config-grid">
+      ${configs.length === 0 ? `
+        <div class="empty-state">
+          <div class="empty-icon">⚙️</div>
+          <div class="empty-title">No configurations yet</div>
+          <div class="empty-sub">Add a configuration to start scheduling messages.</div>
+          <button class="btn btn-primary" style="margin-top:8px;" onclick="openAddConfigModal('${esc(accountName)}')">+ Add Configuration</button>
+        </div>` : configs.map(cfg => renderConfigCard(accountName, cfg)).join('')}
+    </div>`;
+}
+
+async function loadScheduledCount(accountName, configId, cfg) {
+  const chip = document.getElementById(`count-chip-${configId}`);
+  if (!chip) return;
+  try {
+    const res = await apiCall(`/api/accounts/${accountName}/configs/${configId}/scheduled_count`);
+    if (!res.authorized) {
+      chip.innerHTML = `<div class="stat-chip"><span class="lbl">Scheduled</span><span class="val" style="color:var(--text3);">—</span></div>`;
+    } else if (res.count === null) {
+      // mode3: show running status
+      const running = res.running;
+      chip.innerHTML = running
+        ? `<div class="running-badge"><span class="running-dot"></span>Running</div>`
+        : `<div class="stopped-badge">● Stopped</div>`;
+    } else {
+      chip.innerHTML = `<div class="stat-chip"><span class="lbl">Scheduled</span><span class="val" style="color:var(--accent);">${res.count}</span></div>`;
+    }
+  } catch { chip.innerHTML = ''; }
+}
+
+// ── Config Modal ─────────────────────────────────────────────────────────────
+
+const MODE_DESCRIPTIONS_MAP = {
+  1: 'Fixed interval — schedules a batch of messages at a constant interval using Telegram\'s native queue.',
+  2: 'Dual interval — alternates between two intervals for a more natural message pattern (e.g. 5m, 8m, 5m, 8m…).',
+  3: 'Auto-delete — sends a live message, waits, then deletes it. Repeats in a loop. Controlled with Start/Stop.',
+};
+
+function buildModeSelector(selectedId) {
+  const tabs = document.getElementById('cfg-mode-tabs');
+  const desc = document.getElementById('cfg-mode-desc');
+  tabs.innerHTML = state.modes.map(m => `
+    <div class="mode-tab ${m.id === selectedId ? 'active' : ''}" onclick="selectMode(${m.id})">${escHtml(m.label)}</div>
+  `).join('');
+  desc.textContent = MODE_DESCRIPTIONS_MAP[selectedId] || '';
+}
+
+function selectMode(modeId) {
+  state.selectedModeId = modeId;
+  buildModeSelector(modeId);
+  buildDynamicFields(modeId, {});
+}
+
+function buildDynamicFields(modeId, existingValues) {
+  const mode = getModeById(modeId);
+  const container = document.getElementById('cfg-dynamic-fields');
+  if (!mode) { container.innerHTML = ''; return; }
+
+  container.innerHTML = mode.fields.map(f => {
+    const val = existingValues[f.name] !== undefined ? existingValues[f.name] : f.default;
+    const isSpan2 = f.type === 'textarea' || f.name === 'chat_id' || f.name === 'message';
+    const spanClass = isSpan2 ? 'span2' : '';
+    let input;
+    if (f.type === 'textarea') {
+      input = `<textarea id="dyn-${f.name}" placeholder="${escHtml(String(f.default || ''))}">${escHtml(String(val))}</textarea>`;
+    } else {
+      input = `<input type="${f.type === 'number' ? 'number' : 'text'}" id="dyn-${f.name}" value="${escHtml(String(val))}" placeholder="${escHtml(String(f.default || ''))}">`;
+    }
+    const hint = f.hint ? `<div class="field-hint">${escHtml(f.hint)}</div>` : '';
+    return `<div class="field ${spanClass}"><label>${escHtml(f.label)}</label>${input}${hint}</div>`;
+  }).join('');
+}
+
+function collectDynamicFields() {
+  const mode = getModeById(state.selectedModeId);
+  if (!mode) return null;
+  const body = { mode: state.selectedModeId };
+  for (const f of mode.fields) {
+    const el = document.getElementById(`dyn-${f.name}`);
+    if (!el) continue;
+    body[f.name] = f.type === 'number' ? (parseFloat(el.value) || 0) : el.value.trim();
+  }
+  return body;
+}
+
+function openAddConfigModal(accountName) {
+  state.configMode = 'add';
+  state.editConfigId = null;
+  state.editAccountName = accountName;
+  const defaultModeId = state.modes[0]?.id || 1;
+  state.selectedModeId = defaultModeId;
+  document.getElementById('modal-config-title').textContent = 'Add Configuration';
+  document.getElementById('btn-cfg-submit').innerHTML = 'Add Config';
+  document.getElementById('btn-cfg-submit').disabled = false;
+  buildModeSelector(defaultModeId);
+  buildDynamicFields(defaultModeId, {});
+  openModal('modal-config');
+}
+
+function openEditConfigModal(accountName, configId) {
+  const cfg = state.configs.find(c => String(c.id) === String(configId));
+  if (!cfg) { toast('Config not found', 'error'); return; }
+  state.configMode = 'edit';
+  state.editConfigId = configId;
+  state.editAccountName = accountName;
+  const modeId = cfg.mode || 1;
+  state.selectedModeId = modeId;
+  document.getElementById('modal-config-title').textContent = `Edit Config #${configId}`;
+  document.getElementById('btn-cfg-submit').innerHTML = 'Save Changes';
+  document.getElementById('btn-cfg-submit').disabled = false;
+  buildModeSelector(modeId);
+  buildDynamicFields(modeId, cfg);
+  openModal('modal-config');
+}
+
+async function submitConfig() {
+  const body = collectDynamicFields();
+  if (!body) { toast('Select a mode first', 'error'); return; }
+  setBtn('btn-cfg-submit', true, 'Saving...');
+  try {
+    if (state.configMode === 'add') {
+      await apiCall(`/api/accounts/${state.editAccountName}/configs`, { method: 'POST', body: JSON.stringify(body) });
+      toast('Configuration added!', 'success');
+    } else {
+      await apiCall(`/api/accounts/${state.editAccountName}/configs/${state.editConfigId}`, { method: 'PUT', body: JSON.stringify(body) });
+      toast('Configuration updated!', 'success');
+    }
+    closeModal('modal-config');
+    await showAccountConfigs(state.editAccountName);
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    setBtn('btn-cfg-submit', false);
+  }
+}
+
+// ── Config actions ────────────────────────────────────────────────────────────
+
+async function deleteConfig(accountName, configId) {
+  if (!confirm(`Delete configuration #${configId}?`)) return;
+  try {
+    await apiCall(`/api/accounts/${accountName}/configs/${configId}`, { method: 'DELETE' });
+    toast(`Config #${configId} deleted`, 'success');
+    await showAccountConfigs(accountName);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function refillConfig(accountName, configId) {
+  const btn = document.getElementById(`btn-refill-${configId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; }
+  try {
+    const res = await apiCall(`/api/accounts/${accountName}/configs/${configId}/refill`, { method: 'POST' });
+    toast(res.message || 'Refill complete!', 'success');
+    const cfg = state.configs.find(c => String(c.id) === String(configId));
+    await loadScheduledCount(accountName, configId, cfg);
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '↻ Refill'; }
+  }
+}
+
+async function startConfig(accountName, configId) {
+  const btn = document.getElementById(`btn-start-${configId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; }
+  try {
+    const res = await apiCall(`/api/accounts/${accountName}/configs/${configId}/start`, { method: 'POST' });
+    toast(res.message || 'Started!', 'success');
+    const cfg = state.configs.find(c => String(c.id) === String(configId));
+    await loadScheduledCount(accountName, configId, cfg);
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '▶ Start'; }
+  }
+}
+
+async function stopConfig(accountName, configId) {
+  const btn = document.getElementById(`btn-stop-${configId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; }
+  try {
+    const res = await apiCall(`/api/accounts/${accountName}/configs/${configId}/stop`, { method: 'POST' });
+    toast(res.message || 'Stopped!', 'success');
+    const cfg = state.configs.find(c => String(c.id) === String(configId));
+    await loadScheduledCount(accountName, configId, cfg);
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '■ Stop'; }
+  }
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function esc(str) { return String(str || '').replace(/'/g, "\\'"); }
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function init() {
+  await refreshStatus();
+  await loadModes();
+  await loadAccounts();
+  setInterval(refreshStatus, 15000);
+}
+
+init();
+</script>
+</body>
+</html>

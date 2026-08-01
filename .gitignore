@@ -1,0 +1,22 @@
+# فایل‌های حاوی توکن و تنظیمات حساس
+.env
+config.json
+config.ini
+*.session
+*.session-journal
+auth.txt
+
+# فایل‌های کش و کامپایل شده پایتون
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# فایل‌های اضافه نود جی‌اس (در صورت وجود)
+node_modules/
+npm-debug.log*
+
+# فایل‌های سیستم عامل
+.DS_Store
+Thumbs.db

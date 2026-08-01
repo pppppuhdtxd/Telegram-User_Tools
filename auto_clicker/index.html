@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#070d11">
+    <title>Auto-Clicker Control Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg0: #070d11;
+            --bg1: #0b141a;
+            --panel: #0f1c24;
+            --panel-2: #12222c;
+            --line: #1d3240;
+            --line-strong: #2c4a5d;
+            --text: #e8f1f5;
+            --muted: #7f97a6;
+            --teal: #43d9c0;
+            --amber: #ffb454;
+            --blue: #5aa9ff;
+            --green: #4ade80;
+            --red: #ff6161;
+            --display: "Space Grotesk", "Segoe UI", sans-serif;
+            --body: "IBM Plex Sans", "Segoe UI", Tahoma, sans-serif;
+            --mono: "IBM Plex Mono", Consolas, monospace;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; min-height: 100%; }
+
+        body {
+            font-family: var(--body);
+            background: var(--bg0);
+            color: var(--text);
+            font-size: 14px;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: "";
+            position: fixed; inset: 0;
+            background-image:
+                linear-gradient(rgba(120, 165, 185, 0.045) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(120, 165, 185, 0.045) 1px, transparent 1px);
+            background-size: 44px 44px;
+            pointer-events: none; z-index: 0;
+            -webkit-mask-image: radial-gradient(ellipse at 25% 0%, black 0%, transparent 75%);
+            mask-image: radial-gradient(ellipse at 25% 0%, black 0%, transparent 75%);
+        }
+
+        body::after {
+            content: "";
+            position: fixed; inset: -20%;
+            background:
+                radial-gradient(640px 420px at 12% 8%, rgba(67, 217, 192, 0.10), transparent 62%),
+                radial-gradient(760px 520px at 88% 92%, rgba(255, 180, 84, 0.09), transparent 62%);
+            animation: drift 28s ease-in-out infinite alternate;
+            pointer-events: none; z-index: 0;
+        }
+
+        @keyframes drift {
+            from { transform: translate3d(-2%, -1.5%, 0) scale(1); }
+            to   { transform: translate3d(2%, 2%, 0) scale(1.06); }
+        }
+
+        button, input, select, textarea { font: inherit; }
+        .app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+
+        /* ── Sidebar ────────────────────────────────────────────────── */
+        .sidebar {
+            width: 250px; flex: 0 0 auto; padding: 22px 14px;
+            background: linear-gradient(180deg, rgba(13, 22, 29, 0.97), rgba(8, 14, 19, 0.99));
+            border-right: 1px solid var(--line);
+            position: sticky; top: 0; height: 100vh;
+            display: flex; flex-direction: column; gap: 24px;
+        }
+        .brand { display: flex; align-items: center; gap: 12px; padding: 4px 8px; }
+        .brand-mark {
+            width: 44px; height: 44px; border-radius: 9px;
+            display: grid; place-items: center;
+            background: linear-gradient(140deg, #123332, #0d2126);
+            border: 1px solid rgba(67, 217, 192, 0.4);
+            box-shadow: 0 0 22px rgba(67, 217, 192, 0.18), inset 0 0 12px rgba(67, 217, 192, 0.12);
+        }
+        .brand-mark svg { width: 22px; height: 22px; }
+        .brand h1 { margin: 0; font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: 0.02em; }
+        .brand p { margin: 3px 0 0; color: var(--muted); font-size: 11px; letter-spacing: 0.04em; }
+        .nav { display: flex; flex-direction: column; gap: 4px; }
+        .nav-item {
+            position: relative; width: 100%; border: none; background: transparent;
+            color: var(--muted); padding: 11px 14px 11px 16px; border-radius: 7px;
+            display: flex; align-items: center; gap: 11px; cursor: pointer;
+            transition: color .18s ease, background .18s ease, transform .18s ease;
+            text-align: left; font-weight: 500; letter-spacing: 0.02em;
+        }
+        .nav-item .glyph { font-size: 15px; width: 20px; text-align: center; }
+        .nav-item::before {
+            content: ""; position: absolute; left: 0; top: 20%; bottom: 20%;
+            width: 3px; border-radius: 3px; background: var(--teal);
+            opacity: 0; transform: scaleY(0.3);
+            transition: opacity .18s ease, transform .18s ease;
+        }
+        .nav-item:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); transform: translateX(2px); }
+        .nav-item.active { color: var(--text); background: rgba(67, 217, 192, 0.09); }
+        .nav-item.active::before { opacity: 1; transform: scaleY(1); }
+        .sidebar-footer {
+            margin-top: auto; color: var(--muted); font-family: var(--mono);
+            font-size: 10.5px; line-height: 1.9; padding: 12px 10px 0;
+            border-top: 1px solid var(--line); letter-spacing: 0.03em;
+        }
+
+        /* ── Main / topbar ──────────────────────────────────────────── */
+        .main { flex: 1; min-width: 0; padding: 24px 26px 40px; }
+        .topbar {
+            display: flex; align-items: flex-end; justify-content: space-between;
+            gap: 16px; flex-wrap: wrap; margin-bottom: 24px;
+            padding-bottom: 18px; border-bottom: 1px solid var(--line);
+        }
+        .page-title h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 700; letter-spacing: 0.01em; }
+        .page-title p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+        .topbar-live { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .chip {
+            display: inline-flex; align-items: center; gap: 8px; padding: 7px 11px;
+            border: 1px solid var(--line); border-radius: 5px;
+            background: rgba(15, 28, 36, 0.85); color: var(--muted);
+            font-family: var(--mono); font-size: 10.5px;
+            letter-spacing: 0.09em; text-transform: uppercase;
+            transition: border-color .2s ease;
+        }
+        .chip:hover { border-color: var(--line-strong); }
+        .led { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+        .led.ok   { background: var(--green); box-shadow: 0 0 9px rgba(74, 222, 128, 0.75); animation: pulse 2.2s infinite; }
+        .led.warn { background: var(--amber); box-shadow: 0 0 9px rgba(255, 180, 84, 0.75); animation: pulse 1.6s infinite; }
+        .led.err  { background: var(--red);   box-shadow: 0 0 9px rgba(255, 97, 97, 0.75);  animation: pulse 1.1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+        .page { display: none; }
+        .page.active { display: block; }
+        .page.active > * { animation: rise .4s cubic-bezier(.22, .9, .3, 1) both; }
+        .page.active > *:nth-child(2) { animation-delay: .05s; }
+        .page.active > *:nth-child(3) { animation-delay: .1s; }
+        .page.active > *:nth-child(4) { animation-delay: .15s; }
+        @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ── Cards / panels ─────────────────────────────────────────── */
+        .card {
+            background: linear-gradient(180deg, var(--panel), rgba(13, 23, 30, 0.92));
+            border: 1px solid var(--line); border-radius: 10px;
+            transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease;
+        }
+        .card:hover { border-color: var(--line-strong); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35); }
+        .card-header {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line);
+        }
+        .card-header h3 {
+            margin: 0; font-family: var(--display); font-size: 13px; font-weight: 700;
+            letter-spacing: 0.14em; text-transform: uppercase; color: var(--text);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .card-body { padding: 16px 18px; }
+
+        .dash-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+        .stat-rail { grid-column: span 3; display: flex; flex-direction: column; }
+        .stat-item { position: relative; padding: 16px 18px 16px 22px; border-bottom: 1px solid var(--line); transition: background .2s ease; }
+        .stat-item:last-child { border-bottom: none; }
+        .stat-item:hover { background: rgba(255, 255, 255, 0.025); }
+        .stat-item::before {
+            content: ""; position: absolute; left: 0; top: 18px; bottom: 18px;
+            width: 3px; border-radius: 3px; background: var(--accent, var(--teal));
+        }
+        .stat-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+        .stat-value { font-family: var(--mono); font-size: 34px; font-weight: 600; line-height: 1.25; margin-top: 4px; }
+        .stat-value.tick { animation: tick .45s ease; }
+        @keyframes tick { 0% { transform: scale(1); } 35% { transform: scale(1.14); color: var(--accent, var(--teal)); } 100% { transform: scale(1); } }
+        .stat-sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+        .panel-ops      { grid-column: span 9; }
+        .panel-accounts { grid-column: span 4; }
+        .panel-feed     { grid-column: span 4; }
+        .panel-stats    { grid-column: span 4; }
+
+        /* ── Generic bits ───────────────────────────────────────────── */
+        .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+        .toolbar-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .hint { color: var(--muted); font-size: 12px; line-height: 1.8; max-width: 460px; }
+        .btn {
+            border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.03);
+            color: var(--text); padding: 9px 15px; border-radius: 6px; cursor: pointer;
+            transition: transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            font-weight: 600; font-size: 13px; letter-spacing: 0.02em; white-space: nowrap;
+        }
+        .btn:hover { transform: translateY(-1px); background: rgba(255, 255, 255, 0.06); border-color: #3d617a; }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+        .btn-primary { background: linear-gradient(140deg, var(--teal), #2ba893); border-color: transparent; color: #04231d; box-shadow: 0 8px 24px rgba(67, 217, 192, 0.22); }
+        .btn-primary:hover { background: linear-gradient(140deg, #57e3cc, #33b7a1); box-shadow: 0 10px 28px rgba(67, 217, 192, 0.3); }
+        .btn-danger { background: rgba(255, 97, 97, 0.1); border-color: rgba(255, 97, 97, 0.4); color: #ffb3b3; }
+        .btn-danger:hover { background: rgba(255, 97, 97, 0.18); border-color: rgba(255, 97, 97, 0.6); }
+        .btn-success { background: rgba(74, 222, 128, 0.1); border-color: rgba(74, 222, 128, 0.4); color: #b9f5cf; }
+        .btn-success:hover { background: rgba(74, 222, 128, 0.18); }
+        .btn.loading { pointer-events: none; }
+        .spinner { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); border-top-color: currentColor; display: inline-block; animation: spin .7s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .badge {
+            display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px;
+            border-radius: 4px; font-family: var(--mono); font-size: 10.5px;
+            letter-spacing: 0.07em; text-transform: uppercase;
+            border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: var(--muted);
+        }
+        .badge-success { color: #b9f5cf; border-color: rgba(74, 222, 128, 0.4); background: rgba(74, 222, 128, 0.09); }
+        .badge-warning { color: #ffe2b0; border-color: rgba(255, 180, 84, 0.4); background: rgba(255, 180, 84, 0.09); }
+        .badge-danger  { color: #ffc4c4; border-color: rgba(255, 97, 97, 0.4);  background: rgba(255, 97, 97, 0.09); }
+        .badge-info    { color: #cfe4ff; border-color: rgba(90, 169, 255, 0.4); background: rgba(90, 169, 255, 0.09); }
+        .empty-state {
+            padding: 34px 18px; text-align: center; color: var(--muted);
+            border: 1px dashed var(--line-strong); border-radius: 8px;
+            background: rgba(255, 255, 255, 0.015); line-height: 1.9; font-size: 13px;
+        }
+
+        /* ── Accounts ───────────────────────────────────────────────── */
+        .accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+        .account-card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+        .account-card:hover { transform: translateY(-2px); }
+        .account-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+        .account-name { font-family: var(--display); font-size: 18px; font-weight: 700; word-break: break-all; }
+        .account-user { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+        .account-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+        .account-meta { display: grid; gap: 8px; color: var(--muted); font-size: 12.5px; background: rgba(4,9,13,0.5); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+        .account-meta div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .account-meta b { color: var(--text); font-weight: 600; word-break: break-all; font-family: var(--mono); font-size: 12px; }
+        .account-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .account-actions .btn { flex: 1; padding: 8px 10px; font-size: 12.5px; }
+
+        /* ── Rules ──────────────────────────────────────────────────── */
+        .rules-list { display: grid; gap: 14px; }
+        .rule-card { border: 1px solid var(--line); background: rgba(15, 28, 36, 0.7); border-radius: 9px; padding: 16px 18px; transition: border-color .2s ease, transform .2s ease; }
+        .rule-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+        .rule-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+        .rule-title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+        .rule-id { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+        .rule-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+        .rule-field { background: rgba(4, 9, 13, 0.5); border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; min-width: 0; }
+        .rule-field > span { display: block; color: var(--muted); font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.13em; text-transform: uppercase; margin-bottom: 7px; }
+        .rule-field b { word-break: break-all; font-size: 13.5px; font-weight: 600; }
+        .rule-actions { display: flex; gap: 8px; }
+        .save-hint { color: var(--amber); font-size: 12px; display: inline-flex; align-items: center; gap: 7px; }
+        .save-hint .led { width: 7px; height: 7px; }
+        .chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .mini-chip {
+            display: inline-flex; align-items: center;
+            background: rgba(90, 169, 255, 0.1); border: 1px solid rgba(90, 169, 255, 0.3);
+            color: #cfe4ff; border-radius: 4px; padding: 2px 8px;
+            font-family: var(--mono); font-size: 11px;
+            max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .mini-chip.more { background: rgba(255, 255, 255, 0.05); border-color: var(--line-strong); color: var(--muted); }
+
+        .perf-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+        .perf-chip { font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; background: rgba(255, 255, 255, 0.02); }
+        .perf-chip.hot { color: #ffe2b0; border-color: rgba(255, 180, 84, 0.4); background: rgba(255, 180, 84, 0.07); }
+        .perf-chip.fast { color: #bdeee4; border-color: rgba(67, 217, 192, 0.35); background: rgba(67, 217, 192, 0.06); }
+
+        #rule-search { width: 230px; }
+        #session-filter { width: 180px; }
+
+        /* ── Forms ──────────────────────────────────────────────────── */
+        .form { display: grid; gap: 16px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .form-grid.one { grid-template-columns: 1fr; }
+        label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+        .req { color: var(--red); margin-left: 4px; }
+        input[type="text"], input[type="number"], input[type="password"], select, textarea {
+            width: 100%; background: rgba(4, 9, 13, 0.75);
+            border: 1px solid var(--line-strong); color: var(--text);
+            border-radius: 6px; padding: 10px 12px; outline: none;
+            transition: border-color .18s ease, box-shadow .18s ease; font-size: 13.5px;
+        }
+        input:focus, select:focus, textarea:focus { border-color: rgba(67, 217, 192, 0.7); box-shadow: 0 0 0 3px rgba(67, 217, 192, 0.12); }
+        input::placeholder { color: rgba(127, 151, 166, 0.6); }
+        .checkbox { display: flex; align-items: center; gap: 10px; color: var(--text); margin: 0; cursor: pointer; font-size: 13px; }
+        .checkbox input { width: 16px; height: 16px; accent-color: var(--teal); }
+        .switch { position: relative; display: inline-block; width: 50px; height: 27px; flex: 0 0 auto; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch span { position: absolute; inset: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.1); border: 1px solid var(--line-strong); transition: .2s ease; }
+        .switch span:before { content: ""; position: absolute; width: 19px; height: 19px; border-radius: 50%; top: 3px; left: 4px; background: #c8d6de; transition: .2s ease; }
+        .switch input:checked + span { background: linear-gradient(140deg, var(--teal), #2ba893); border-color: transparent; }
+        .switch input:checked + span:before { transform: translateX(23px); background: #04231d; }
+        details { border: 1px solid var(--line); border-radius: 7px; padding: 10px 13px; background: rgba(255, 255, 255, 0.015); }
+        summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+        summary:hover { color: var(--text); }
+        .field-hint { color: var(--muted); font-size: 11.5px; margin-top: 7px; line-height: 1.75; }
+
+        /* ── Performance section ────────────────────────────────────── */
+        .perf-section { border: 1px solid rgba(67, 217, 192, 0.28); border-radius: 8px; background: rgba(67, 217, 192, 0.045); padding: 14px; }
+        .perf-header { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--teal); display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+        .perf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .flood-warning { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255, 180, 84, 0.45); background: rgba(255, 180, 84, 0.08); color: #ffe2b0; font-size: 12px; line-height: 1.65; align-items: flex-start; gap: 9px; }
+        .flood-warning.visible { display: flex; }
+        .flood-warning .led { margin-top: 4px; }
+
+        /* ── Self-targeting section ─────────────────────────────────── */
+        .self-section { border: 1px solid rgba(90, 169, 255, 0.28); border-radius: 8px; background: rgba(90, 169, 255, 0.045); padding: 14px; }
+        .self-header { font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--blue); display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+        .self-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+        /* ── Duplicate dialog ───────────────────────────────────────── */
+        .dup-preview { border: 1px solid var(--line); border-radius: 8px; background: rgba(4, 9, 13, 0.5); padding: 12px 14px; margin-bottom: 16px; display: grid; gap: 7px; }
+        .dup-preview-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+        .dup-preview-row span { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; align-self: center; }
+        .dup-preview-row b { word-break: break-all; text-align: right; }
+        .dup-sessions { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; max-height: 200px; overflow: auto; padding: 4px; }
+        .dup-check { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: rgba(255, 255, 255, 0.02); transition: border-color .15s ease; }
+        .dup-check:hover { border-color: var(--line-strong); }
+
+        /* ── Tag input ──────────────────────────────────────────────── */
+        .tag-input { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; background: rgba(4, 9, 13, 0.75); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 9px; cursor: text; transition: border-color .18s ease, box-shadow .18s ease; }
+        .tag-input:focus-within { border-color: rgba(67, 217, 192, 0.7); box-shadow: 0 0 0 3px rgba(67, 217, 192, 0.12); }
+        .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag-chip { display: inline-flex; align-items: center; gap: 5px; background: rgba(67, 217, 192, 0.12); border: 1px solid rgba(67, 217, 192, 0.35); color: #bdeee4; border-radius: 4px; padding: 3px 5px 3px 9px; font-family: var(--mono); font-size: 11.5px; animation: chipIn .16s ease; }
+        @keyframes chipIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+        .tag-x { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 1px 4px; border-radius: 3px; opacity: 0.7; transition: .15s ease; }
+        .tag-x:hover { opacity: 1; background: rgba(255, 97, 97, 0.3); color: #ffd0d0; }
+        .tag-input input { flex: 1 1 160px; min-width: 140px; border: none !important; background: transparent !important; box-shadow: none !important; padding: 4px 3px; }
+
+        /* ── Matcher tester ─────────────────────────────────────────── */
+        .tester { border: 1px dashed var(--line-strong); border-radius: 8px; padding: 12px; background: rgba(4, 9, 13, 0.4); display: grid; gap: 10px; margin-top: 12px; }
+        .tester-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .tester-result { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--muted); transition: all .2s ease; }
+        .tester-result.good { color: #04231d; background: var(--teal);  border-color: var(--teal);  font-weight: 600; }
+        .tester-result.bad  { color: #2b0d0d; background: var(--red);   border-color: var(--red);   font-weight: 600; }
+        .tester-result.warn { color: #2b1c05; background: var(--amber); border-color: var(--amber); font-weight: 600; }
+
+        /* ── Modals ─────────────────────────────────────────────────── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(3, 7, 10, 0.78); display: grid; place-items: center; padding: 18px; z-index: 1000; animation: fadeIn .18s ease; }
+        .confirm-overlay { z-index: 1300; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .modal { width: min(660px, 100%); max-height: 92vh; overflow: auto; background: linear-gradient(180deg, #101d26, #0a1218); border: 1px solid var(--line-strong); border-top: 2px solid var(--teal); border-radius: 12px; box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55); padding: 22px; animation: modalIn .22s cubic-bezier(.22, .9, .3, 1); }
+        @keyframes modalIn { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .modal-wide { width: min(760px, 100%); }
+        .modal-small { width: min(470px, 100%); border-top-color: var(--amber); }
+        .modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+        .modal-header h3 { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 700; }
+        .modal-header p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+        .icon-btn { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: var(--muted); width: 34px; height: 34px; border-radius: 7px; cursor: pointer; transition: .16s ease; flex: 0 0 auto; }
+        .icon-btn:hover { color: var(--text); border-color: var(--line-strong); transform: rotate(90deg); }
+        .modal-footer { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .wizard-steps { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .wizard-step { padding: 7px 12px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; background: rgba(255, 255, 255, 0.02); transition: .2s ease; }
+        .wizard-step.active { color: #04231d; background: var(--teal); border-color: var(--teal); font-weight: 600; }
+
+        /* ── Logs ───────────────────────────────────────────────────── */
+        .log-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+        .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+        .seg-btn { border: none; background: transparent; color: var(--muted); padding: 7px 13px; cursor: pointer; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; transition: .16s ease; border-right: 1px solid var(--line); }
+        .seg-btn:last-child { border-right: none; }
+        .seg-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+        .seg-btn.active { color: #04231d; background: var(--teal); font-weight: 600; }
+        .log-box { font-family: var(--mono); font-size: 12px; line-height: 1.8; background: #04080c; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; height: min(66vh, 740px); overflow: auto; white-space: pre-wrap; word-break: break-word; }
+        .log-line { padding: 1px 0; animation: logIn .18s ease; }
+        @keyframes logIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: none; } }
+        .log-info  { color: #c9dbe6; }
+        .log-warn  { color: #ffd58a; }
+        .log-error { color: #ff9d9d; }
+        .log-debug { color: #7f97a6; }
+
+        /* ── Dashboard lists ────────────────────────────────────────── */
+        .task-item, .mini-account, .feed-line { border: 1px solid var(--line); background: rgba(4, 9, 13, 0.45); border-radius: 7px; }
+        .task-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; margin-bottom: 9px; transition: border-color .18s ease, transform .18s ease; }
+        .task-item:hover { border-color: var(--line-strong); transform: translateX(2px); }
+        .task-item:last-child { margin-bottom: 0; }
+        .task-item .meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+        .task-item b { font-family: var(--display); }
+        .mini-account { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; margin-bottom: 9px; transition: border-color .18s ease; }
+        .mini-account:hover { border-color: var(--line-strong); }
+        .mini-account:last-child { margin-bottom: 0; }
+        .mini-account b { font-family: var(--mono); font-size: 12.5px; }
+        .mini-account .sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+        .feed-wrap { max-height: 262px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+        .feed-line { font-family: var(--mono); font-size: 10.5px; color: var(--muted); padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stat-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; margin-bottom: 9px; border: 1px solid var(--line); border-radius: 7px; background: rgba(4, 9, 13, 0.45); transition: border-color .18s ease, transform .18s ease; }
+        .stat-row:hover { border-color: var(--line-strong); transform: translateX(2px); }
+        .stat-row:last-child { margin-bottom: 0; }
+        .stat-row b { font-family: var(--mono); font-size: 12.5px; }
+        .stat-row .meta { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+        .stat-row .meta .ok { color: #b9f5cf; }
+        .stat-row .meta .fail { color: #ffc4c4; }
+        .muted { color: var(--muted); }
+
+        /* ── Toasts ─────────────────────────────────────────────────── */
+        .toast-root { position: fixed; bottom: 22px; right: 22px; display: flex; flex-direction: column; gap: 10px; z-index: 1500; max-width: min(92vw, 380px); }
+        .toast { padding: 12px 15px; border-radius: 8px; border: 1px solid var(--line-strong); border-left: 3px solid var(--blue); background: rgba(12, 20, 27, 0.97); color: var(--text); box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5); animation: toastIn .22s cubic-bezier(.22, .9, .3, 1); line-height: 1.7; font-size: 13px; }
+        .toast.success { border-left-color: var(--green); }
+        .toast.error   { border-left-color: var(--red); }
+        .toast.warning { border-left-color: var(--amber); }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+        @media (max-width: 1180px) {
+            .stat-rail { grid-column: span 12; flex-direction: row; flex-wrap: wrap; }
+            .stat-item { flex: 1 1 200px; border-bottom: none; border-right: 1px solid var(--line); }
+            .stat-item:last-child { border-right: none; }
+            .panel-ops, .panel-accounts, .panel-feed, .panel-stats { grid-column: span 12; }
+            .rule-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 860px) {
+            .app { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid var(--line); }
+            .nav { flex-direction: row; overflow: auto; }
+            .nav-item { flex: 0 0 auto; }
+            .nav-item::before { display: none; }
+            .sidebar-footer { display: none; }
+            .main { padding: 16px; }
+            .form-grid, .rule-grid, .perf-grid, .self-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M13 2L4.5 13.5H11L9.5 22L19 10H12.5L13 2Z" fill="#43d9c0"/></svg>
+                </div>
+                <div>
+                    <h1>AUTO-CLICKER</h1>
+                    <p>Telegram button automation</p>
+                </div>
+            </div>
+            <nav class="nav">
+                <button class="nav-item active" data-page="dashboard"><span class="glyph">▦</span> Dashboard</button>
+                <button class="nav-item" data-page="accounts"><span class="glyph">◉</span> Accounts</button>
+                <button class="nav-item" data-page="rules"><span class="glyph">⌖</span> Rules</button>
+                <button class="nav-item" data-page="logs"><span class="glyph">≡</span> Logs</button>
+            </nav>
+            <div class="sidebar-footer">
+                BUILD&nbsp;// WEB-ONLY<br>
+                backend: auto_clicker.py<br>
+                ui:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;index.html
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="page-title">
+                    <h2 id="page-heading">Dashboard</h2>
+                    <p id="page-subheading">System overview, accounts and active click operations</p>
+                </div>
+                <div class="topbar-live">
+                    <span class="chip" id="chip-api"><span class="led"></span> API LINK</span>
+                    <span class="chip" id="chip-sse"><span class="led"></span> LOG STREAM</span>
+                    <span class="chip" id="chip-accounts"><span class="led"></span> 0 ACCOUNTS</span>
+                    <span class="chip" id="clock">--:--:--</span>
+                </div>
+            </header>
+
+            <!-- ── DASHBOARD ─────────────────────────────────────────── -->
+            <section id="page-dashboard" class="page active">
+                <div class="dash-grid">
+                    <div class="card stat-rail">
+                        <div class="stat-item" style="--accent: var(--teal);">
+                            <div class="stat-label">Connected Accounts</div>
+                            <div class="stat-value" id="stat-accounts" style="--accent: var(--teal);">0</div>
+                            <div class="stat-sub">managed from the web UI</div>
+                        </div>
+                        <div class="stat-item" style="--accent: var(--amber);">
+                            <div class="stat-label">Active Click Tasks</div>
+                            <div class="stat-value" id="stat-tasks" style="--accent: var(--amber);">0</div>
+                            <div class="stat-sub">loops currently running</div>
+                        </div>
+                        <div class="stat-item" style="--accent: var(--blue);">
+                            <div class="stat-label">Total Rules</div>
+                            <div class="stat-value" id="stat-rules" style="--accent: var(--blue);">0</div>
+                            <div class="stat-sub">saved in config</div>
+                        </div>
+                        <div class="stat-item" style="--accent: var(--green);">
+                            <div class="stat-label">Enabled Rules</div>
+                            <div class="stat-value" id="stat-enabled" style="--accent: var(--green);">0</div>
+                            <div class="stat-sub">armed and matching</div>
+                        </div>
+                    </div>
+
+                    <div class="card panel-ops">
+                        <div class="card-header">
+                            <h3><span class="led" id="ops-led"></span> Active Click Operations</h3>
+                            <span class="badge badge-info" id="tasks-count-badge">0</span>
+                        </div>
+                        <div class="card-body" id="dashboard-tasks">
+                            <div class="empty-state">No active click operations.</div>
+                        </div>
+                    </div>
+
+                    <div class="card panel-accounts">
+                        <div class="card-header">
+                            <h3>Accounts</h3>
+                            <button class="btn btn-primary" id="btn-add-account">＋ Add</button>
+                        </div>
+                        <div class="card-body" id="dashboard-accounts">
+                            <div class="empty-state">No accounts yet.</div>
+                        </div>
+                    </div>
+
+                    <div class="card panel-feed">
+                        <div class="card-header">
+                            <h3><span class="led ok"></span> System Feed</h3>
+                            <span class="badge">LIVE</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="feed-wrap" id="system-feed">
+                                <div class="feed-line">Waiting for activity…</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card panel-stats">
+                        <div class="card-header">
+                            <h3><span class="led ok"></span> Click Statistics</h3>
+                            <span class="badge">PER ACCOUNT</span>
+                        </div>
+                        <div class="card-body" id="session-stats">
+                            <div class="empty-state">No click activity yet.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── ACCOUNTS ──────────────────────────────────────────── -->
+            <section id="page-accounts" class="page">
+                <div class="toolbar">
+                    <div class="toolbar-group">
+                        <button class="btn btn-primary" id="btn-add-account-2">＋ Add New Account</button>
+                    </div>
+                    <div class="hint">Get your API ID and API hash from my.telegram.org. The login code is delivered inside the Telegram app.</div>
+                </div>
+                <div class="accounts-grid" id="accounts-grid">
+                    <div class="empty-state">Loading accounts…</div>
+                </div>
+            </section>
+
+            <!-- ── RULES ─────────────────────────────────────────────── -->
+            <section id="page-rules" class="page">
+                <div class="toolbar">
+                    <div class="toolbar-group">
+                        <button class="btn btn-primary" id="btn-add-rule">＋ Add Rule</button>
+                        <button class="btn" id="btn-paste-rule" disabled>📋 Paste Rule</button>
+                        <button class="btn btn-success" id="btn-save-config">💾 Save Config</button>
+                        <span class="save-hint" id="save-config-hint" hidden>
+                            <span class="led warn"></span> Unsaved changes
+                        </span>
+                    </div>
+                    <div class="toolbar-group">
+                        <button class="btn" id="btn-settings">⚙ Settings</button>
+                        <button class="btn" id="btn-export">⬇ Export</button>
+                        <button class="btn" id="btn-import">⬆ Import</button>
+                        <input type="file" id="import-file" accept=".json,application/json" style="display:none;">
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <div class="toolbar-group">
+                        <input type="text" id="rule-search" placeholder="Search rules…">
+                        <select id="session-filter"><option value="all">All sessions</option></select>
+                    </div>
+                    <div class="toolbar-group">
+                        <button class="btn" id="btn-enable-all">✓ Enable visible</button>
+                        <button class="btn" id="btn-disable-all">✗ Disable visible</button>
+                    </div>
+                </div>
+
+                <div class="rules-list" id="rules-list">
+                    <div class="empty-state">Loading rules…</div>
+                </div>
+            </section>
+
+            <!-- ── LOGS ──────────────────────────────────────────────── -->
+            <section id="page-logs" class="page">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="log-toolbar">
+                            <div class="toolbar-group">
+                                <button class="btn" id="btn-clear-log">🧹 Clear Logs</button>
+                                <label class="checkbox" style="margin: 0;">
+                                    <input type="checkbox" id="chk-autoscroll" checked> Auto-scroll
+                                </label>
+                            </div>
+                            <div class="toolbar-group">
+                                <div class="seg" id="log-filters">
+                                    <button class="seg-btn active" data-level="all">ALL</button>
+                                    <button class="seg-btn" data-level="info">INFO</button>
+                                    <button class="seg-btn" data-level="warn">WARN</button>
+                                    <button class="seg-btn" data-level="error">ERROR</button>
+                                </div>
+                                <span class="badge" id="log-connection-badge">CONNECTING</span>
+                            </div>
+                        </div>
+                        <div class="log-box" id="log-box"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="toast-root" id="toast-root"></div>
+
+    <script>
+        'use strict';
+
+        const state = {
+            page: 'dashboard',
+            apiOnline: false,
+            logConnected: false,
+            accounts: [],
+            tasks: [],
+            stats: {},
+            sessionStats: {},
+            logLines: [],
+            rules: [],
+            sessions: [],
+            settings: {
+                workers_per_session: 16,
+                quiet_mode: false,
+                max_concurrent_clicks_per_session: 0
+            },
+            defaults: {
+                cps: 2.0, timeout: 10, max_cps: 20.0, min_cps: 0.1, max_timeout: 86400,
+                match_modes: ['contains', 'exact', 'regex'], default_match_mode: 'contains',
+                chat_modes: ['all', 'list'], default_chat_mode: 'list',
+                reaction_delay_ms: 0, skip_first_refresh: true,
+                refresh_every_n_clicks: 5, burst_count: 0,
+                max_reaction_delay_ms: 60000, max_refresh_every_n_clicks: 1000, max_burst_count: 50,
+                min_workers: 1, max_workers: 128, max_concurrent_clicks_cap: 1000,
+                workers_per_session: 16
+            },
+            unsaved: false,
+            logFilter: 'all'
+        };
+
+        const wizard = { modal: null, session: '', payload: null };
+        let logSource = null;
+        let ruleClipboard = null;
+        let searchQuery = '';
+        let sessionFilter = 'all';
+
+        document.addEventListener('DOMContentLoaded', init);
+
+        function init() {
+            bindNavigation();
+            bindGlobalActions();
+            renderAll();
+            refreshStatus();
+            refreshConfig();
+            connectLogs();
+            tickClock();
+            setInterval(refreshStatus, 3000);
+            setInterval(tickClock, 1000);
+        }
+
+        function tickClock() {
+            const el = document.getElementById('clock');
+            if (el) el.textContent = new Date().toLocaleTimeString('en-GB', { hour12: false });
+        }
+
+        function bindNavigation() {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', () => showPage(item.dataset.page));
+            });
+        }
+
+        function bindGlobalActions() {
+            document.getElementById('btn-add-account').addEventListener('click', openAddAccountWizard);
+            document.getElementById('btn-add-account-2').addEventListener('click', openAddAccountWizard);
+            document.getElementById('btn-add-rule').addEventListener('click', () => openRuleModal());
+            document.getElementById('btn-paste-rule').addEventListener('click', openPasteDialog);
+            document.getElementById('btn-save-config').addEventListener('click', saveConfig);
+            document.getElementById('btn-clear-log').addEventListener('click', clearLogs);
+            document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+            document.getElementById('btn-export').addEventListener('click', exportConfig);
+            document.getElementById('btn-import').addEventListener('click', () => document.getElementById('import-file').click());
+            document.getElementById('import-file').addEventListener('change', e => {
+                if (e.target.files && e.target.files[0]) importConfig(e.target.files[0]);
+                e.target.value = '';
+            });
+            document.getElementById('btn-enable-all').addEventListener('click', () => bulkToggle(true));
+            document.getElementById('btn-disable-all').addEventListener('click', () => bulkToggle(false));
+
+            document.getElementById('rule-search').addEventListener('input', e => {
+                searchQuery = e.target.value.trim();
+                renderRules();
+            });
+            document.getElementById('session-filter').addEventListener('change', e => {
+                sessionFilter = e.target.value;
+                renderRules();
+            });
+
+            document.getElementById('accounts-grid').addEventListener('click', onAccountAction);
+            document.getElementById('rules-list').addEventListener('click', onRuleAction);
+            document.getElementById('rules-list').addEventListener('change', onRuleToggle);
+
+            document.getElementById('log-filters').addEventListener('click', event => {
+                const btn = event.target.closest('.seg-btn');
+                if (!btn) return;
+                state.logFilter = btn.dataset.level;
+                document.querySelectorAll('#log-filters .seg-btn').forEach(x => x.classList.toggle('active', x === btn));
+                applyLogFilter();
+            });
+        }
+
+        function showPage(page) {
+            state.page = page;
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.page === page));
+            document.querySelectorAll('.page').forEach(section => section.classList.toggle('active', section.id === `page-${page}`));
+            const titles = {
+                dashboard: ['Dashboard', 'System overview, accounts and active click operations'],
+                accounts: ['Accounts', 'Add, remove, disconnect and reconnect Telegram accounts'],
+                rules: ['Rules', 'Manage inline-button auto-click rules'],
+                logs: ['Logs', 'Live backend log stream']
+            };
+            document.getElementById('page-heading').textContent = titles[page][0];
+            document.getElementById('page-subheading').textContent = titles[page][1];
+        }
+
+        async function api(path, options = {}) {
+            const opts = { method: options.method || 'GET', headers: { 'Content-Type': 'application/json' } };
+            if (options.body !== undefined) opts.body = JSON.stringify(options.body);
+            const resp = await fetch(path, opts);
+            let data = null;
+            try { data = await resp.json(); } catch (err) { data = null; }
+            if (!resp.ok || (data && data.ok === false)) {
+                const message = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
+                const error = new Error(message);
+                error.status = resp.status;
+                error.data = data || {};
+                throw error;
+            }
+            return data || {};
+        }
+
+        function errorMessage(err) {
+            if (err && err.data && err.data.wait_seconds) return `${err.message} (${err.data.wait_seconds}s)`;
+            return err && err.message ? err.message : 'Unknown error';
+        }
+
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        function toast(message, type = 'info', timeout = 3800) {
+            const root = document.getElementById('toast-root');
+            const el = document.createElement('div');
+            el.className = `toast ${type}`;
+            el.textContent = message;
+            root.appendChild(el);
+            setTimeout(() => {
+                el.style.opacity = '0'; el.style.transform = 'translateY(8px)'; el.style.transition = '0.25s ease';
+                setTimeout(() => el.remove(), 250);
+            }, timeout);
+        }
+
+        function confirmDialog({ title = 'Confirm', message = 'Are you sure?', confirmText = 'Confirm', cancelText = 'Cancel', danger = false }) {
+            return new Promise(resolve => {
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay confirm-overlay';
+                overlay.innerHTML = `
+                    <div class="modal modal-small">
+                        <div class="modal-header"><div><h3>${esc(title)}</h3><p>${esc(message)}</p></div></div>
+                        <div class="modal-footer">
+                            <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" data-confirm>${esc(confirmText)}</button>
+                            <button class="btn" data-cancel>${esc(cancelText)}</button>
+                        </div>
+                    </div>`;
+                const close = value => { overlay.remove(); resolve(value); };
+                overlay.querySelector('[data-confirm]').addEventListener('click', () => close(true));
+                overlay.querySelector('[data-cancel]').addEventListener('click', () => close(false));
+                overlay.addEventListener('mousedown', e => { if (e.target === overlay) close(false); });
+                document.body.appendChild(overlay);
+            });
+        }
+
+        function openModal(content, options = {}) {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            const modal = document.createElement('div');
+            modal.className = `modal ${options.wide ? 'modal-wide' : ''} ${options.small ? 'modal-small' : ''}`;
+            modal.innerHTML = content;
+            overlay.appendChild(modal);
+            const close = () => overlay.remove();
+            overlay.addEventListener('mousedown', e => {
+                if (e.target === overlay && options.dismissable !== false) close();
+            });
+            document.body.appendChild(overlay);
+            return { overlay, modal, close };
+        }
+
+        function setLoading(btn, loading, loadingText = 'Working…') {
+            if (!btn) return;
+            if (loading) {
+                btn.dataset.oldHtml = btn.innerHTML;
+                btn.disabled = true; btn.classList.add('loading');
+                btn.innerHTML = `<span class="spinner"></span> ${esc(loadingText)}`;
+            } else {
+                btn.disabled = false; btn.classList.remove('loading');
+                if (btn.dataset.oldHtml) btn.innerHTML = btn.dataset.oldHtml;
+            }
+        }
+
+        /* ── Matching helpers (mirror backend) ──────────────────────── */
+        function normalizeMatchText(value, caseSensitive) {
+            let text = String(value ?? '').normalize('NFC').replace(/\uFE0F/g, '');
+            if (!caseSensitive) text = text.toLocaleLowerCase();
+            return text;
+        }
+
+        function buttonMatches(text, keyword, matchMode, caseSensitive) {
+            const key = String(keyword || '');
+            if (!key) return false;
+            if (matchMode === 'exact') return normalizeMatchText(text, caseSensitive) === normalizeMatchText(key, caseSensitive);
+            if (matchMode === 'contains') return normalizeMatchText(text, caseSensitive).includes(normalizeMatchText(key, caseSensitive));
+            if (matchMode === 'regex') {
+                try { return new RegExp(key, caseSensitive ? '' : 'i').test(String(text ?? '')); }
+                catch (err) { return false; }
+            }
+            return false;
+        }
+
+        /* ── Tag input ──────────────────────────────────────────────── */
+        function createTagInput(root) {
+            const values = [];
+            const chipsEl = root.querySelector('.tag-chips');
+            const input = root.querySelector('input');
+            function render() {
+                chipsEl.innerHTML = '';
+                values.forEach((value, index) => {
+                    const chip = document.createElement('span');
+                    chip.className = 'tag-chip';
+                    const text = document.createElement('span');
+                    text.textContent = value;
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button'; removeBtn.className = 'tag-x';
+                    removeBtn.title = 'Remove'; removeBtn.textContent = '×';
+                    removeBtn.addEventListener('click', () => { values.splice(index, 1); render(); });
+                    chip.appendChild(text); chip.appendChild(removeBtn);
+                    chipsEl.appendChild(chip);
+                });
+            }
+            function addValue(raw) {
+                String(raw ?? '').split(',').forEach(part => {
+                    const text = part.trim();
+                    if (text && !values.includes(text)) values.push(text);
+                });
+                render();
+            }
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ',') {
+                    event.preventDefault(); addValue(input.value); input.value = '';
+                } else if (event.key === 'Backspace' && !input.value && values.length) {
+                    values.pop(); render();
+                }
+            });
+            input.addEventListener('blur', () => { if (input.value.trim()) { addValue(input.value); input.value = ''; } });
+            root.addEventListener('click', event => { if (event.target === root || event.target === chipsEl) input.focus(); });
+            return {
+                getValues: () => [...values],
+                setValues: list => { values.length = 0; (list || []).forEach(v => values.push(String(v))); render(); },
+                focus: () => input.focus()
+            };
+        }
+
+        /* ── Data rendering ─────────────────────────────────────────── */
+        function renderAll() {
+            renderConnection();
+            renderDashboard();
+            renderAccounts();
+            renderRules();
+            renderSessionStats();
+            updatePasteButton();
+        }
+
+        async function refreshStatus() {
+            try {
+                const data = await api('/api/status');
+                state.apiOnline = true;
+                state.accounts = Array.isArray(data.accounts) ? data.accounts : [];
+                state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+                state.stats = data.stats || {};
+                state.sessionStats = data.session_stats || {};
+                state.logLines = Array.isArray(data.log_lines) ? data.log_lines : [];
+                renderConnection();
+                renderDashboard();
+                renderAccounts();
+                renderSessionStats();
+            } catch (err) {
+                state.apiOnline = false;
+                renderConnection();
+            }
+        }
+
+        async function refreshConfig() {
+            try {
+                const data = await api('/api/config');
+                state.rules = Array.isArray(data.rules) ? data.rules : [];
+                state.sessions = Array.isArray(data.sessions) ? data.sessions : [];
+                state.defaults = { ...state.defaults, ...(data.defaults || {}) };
+                if (data.settings) state.settings = { ...state.settings, ...data.settings };
+                state.unsaved = false;
+                renderRules();
+                populateSessionFilter();
+            } catch (err) {
+                toast(errorMessage(err), 'error');
+            }
+        }
+
+        function connectLogs() {
+            if (logSource) logSource.close();
+            logSource = new EventSource('/api/log/stream');
+            logSource.onopen = () => {
+                state.logConnected = true;
+                document.getElementById('log-box').innerHTML = '';
+                appendLog('--- Log stream connected ---');
+                renderConnection();
+            };
+            logSource.onmessage = event => appendLog(event.data);
+            logSource.onerror = () => {
+                state.logConnected = false;
+                renderConnection();
+                logSource.close();
+                setTimeout(connectLogs, 3000);
+            };
+        }
+
+        function matchesFilter(level) {
+            if (state.logFilter === 'all') return true;
+            if (state.logFilter === 'info') return level === 'info' || level === 'debug';
+            return level === state.logFilter;
+        }
+
+        function applyLogFilter() {
+            const box = document.getElementById('log-box');
+            for (const el of box.children) {
+                const level = el.dataset.level || 'info';
+                el.style.display = matchesFilter(level) ? '' : 'none';
+            }
+        }
+
+        function appendLog(line) {
+            const box = document.getElementById('log-box');
+            const autoScroll = document.getElementById('chk-autoscroll').checked;
+            const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+            const level = logLevel(line);
+            const el = document.createElement('div');
+            el.className = `log-line log-${level}`;
+            el.dataset.level = level;
+            el.textContent = line;
+            el.style.display = matchesFilter(level) ? '' : 'none';
+            box.appendChild(el);
+            while (box.children.length > 1200) box.removeChild(box.firstChild);
+            if (autoScroll || nearBottom) box.scrollTop = box.scrollHeight;
+        }
+
+        function logLevel(line) {
+            const text = String(line || '').toUpperCase();
+            if (text.includes('ERROR') || text.includes('CRITICAL')) return 'error';
+            if (text.includes('WARNING')) return 'warn';
+            if (text.includes('DEBUG')) return 'debug';
+            return 'info';
+        }
+
+        async function clearLogs() {
+            try {
+                await api('/api/logs/clear', { method: 'POST' });
+                document.getElementById('log-box').innerHTML = '';
+                toast('Logs cleared.', 'success');
+            } catch (err) { toast(errorMessage(err), 'error'); }
+        }
+
+        function renderConnection() {
+            document.getElementById('chip-api').innerHTML = `<span class="led ${state.apiOnline ? 'ok' : 'err'}"></span> API ${state.apiOnline ? 'LINKED' : 'DOWN'}`;
+            document.getElementById('chip-sse').innerHTML = `<span class="led ${state.logConnected ? 'ok' : 'err'}"></span> LOG ${state.logConnected ? 'STREAMING' : 'OFFLINE'}`;
+            const connectedAccounts = state.stats.connected_accounts || 0;
+            document.getElementById('chip-accounts').innerHTML = `<span class="led ${connectedAccounts ? 'ok' : 'warn'}"></span> ${connectedAccounts} ACCOUNT${connectedAccounts === 1 ? '' : 'S'}`;
+            const logBadge = document.getElementById('log-connection-badge');
+            logBadge.textContent = state.logConnected ? 'CONNECTED' : 'OFFLINE';
+            logBadge.className = `badge ${state.logConnected ? 'badge-success' : 'badge-danger'}`;
+        }
+
+        function setStat(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (el.dataset.v !== String(value)) {
+                el.textContent = value; el.dataset.v = String(value);
+                el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick');
+            }
+        }
+
+        function renderDashboard() {
+            setStat('stat-accounts', state.stats.connected_accounts || 0);
+            setStat('stat-tasks', state.stats.active_tasks || 0);
+            setStat('stat-rules', state.stats.rules || 0);
+            setStat('stat-enabled', state.stats.enabled_rules || 0);
+            document.getElementById('tasks-count-badge').textContent = state.tasks.length || 0;
+            document.getElementById('ops-led').className = `led ${state.tasks.length ? 'ok' : ''}`;
+            renderTasks();
+            renderDashboardAccounts();
+            renderFeed();
+        }
+
+        function renderTasks() {
+            const el = document.getElementById('dashboard-tasks');
+            if (!state.tasks.length) { el.innerHTML = '<div class="empty-state">No active click operations.</div>'; return; }
+            el.innerHTML = state.tasks.map(task => `
+                <div class="task-item">
+                    <div><b>${esc(task.session)}</b> <span class="meta">chat=${esc(task.chat_id)} msg=${esc(task.message_id)}</span></div>
+                    <span class="badge ${task.running ? 'badge-success' : 'badge-danger'}">${task.running ? 'RUNNING' : 'STOPPED'}</span>
+                </div>`).join('');
+        }
+
+        function renderDashboardAccounts() {
+            const el = document.getElementById('dashboard-accounts');
+            if (!state.accounts.length) { el.innerHTML = '<div class="empty-state">No accounts yet.</div>'; return; }
+            el.innerHTML = state.accounts.map(account => `
+                <div class="mini-account">
+                    <div><b>${esc(account.name)}</b><div class="sub">${esc(accountDisplayName(account))}</div></div>
+                    ${accountBadge(account)}
+                </div>`).join('');
+        }
+
+        function renderFeed() {
+            const el = document.getElementById('system-feed');
+            const lines = state.logLines.slice(-9);
+            if (!lines.length) { el.innerHTML = '<div class="feed-line">Waiting for activity…</div>'; return; }
+            el.innerHTML = lines.map(line => `<div class="feed-line">${esc(line)}</div>`).join('');
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function renderSessionStats() {
+            const el = document.getElementById('session-stats');
+            const entries = Object.entries(state.sessionStats);
+            if (!entries.length) { el.innerHTML = '<div class="empty-state">No click activity yet.</div>'; return; }
+            el.innerHTML = entries.map(([session, s]) => `
+                <div class="stat-row">
+                    <b>${esc(session)}</b>
+                    <span class="meta">
+                        match=${esc(s.matches || 0)}
+                        <span class="ok">ok=${esc(s.clicks_ok || 0)}</span>
+                        <span class="fail">fail=${esc(s.clicks_fail || 0)}</span>
+                        flood=${esc(s.floodwaits || 0)}
+                    </span>
+                </div>`).join('');
+        }
+
+        function accountDisplayName(account) {
+            if (account.user && account.user.first_name) {
+                const username = account.user.username ? ` @${account.user.username}` : '';
+                return `${account.user.first_name}${username}`;
+            }
+            if (account.pending_state) return 'Login in progress…';
+            return 'No user info';
+        }
+
+        function pendingStateText(value) {
+            const map = {
+                code_required: 'Code required', password_required: '2FA required',
+                signup_required: 'Signup required', authorized: 'Authorized',
+                failed: 'Failed', expired: 'Expired'
+            };
+            return map[value] || value || 'Unknown';
+        }
+
+        function accountBadge(account) {
+            if (account.connected) return '<span class="badge badge-success">CONNECTED</span>';
+            if (account.pending_state) return `<span class="badge badge-warning">${esc(pendingStateText(account.pending_state)).toUpperCase()}</span>`;
+            if (account.session_exists && !account.connected) return '<span class="badge badge-danger">OFFLINE</span>';
+            return '<span class="badge">UNKNOWN</span>';
+        }
+
+        function renderAccounts() {
+            const grid = document.getElementById('accounts-grid');
+            if (!state.accounts.length) {
+                grid.innerHTML = '<div class="empty-state">No accounts found.<br>Use “Add New Account” to log in.</div>';
+                return;
+            }
+            grid.innerHTML = state.accounts.map(account => {
+                const user = account.user || {};
+                const canReconnect = !account.pending_state;
+                const canDisconnect = account.connected;
+                return `
+                    <article class="card account-card">
+                        <div class="account-top">
+                            <div>
+                                <div class="account-name">${esc(account.name)}</div>
+                                <div class="account-user">${esc(accountDisplayName(account))}</div>
+                            </div>
+                            ${accountBadge(account)}
+                        </div>
+                        <div class="account-badges">
+                            <span class="badge ${account.session_exists ? 'badge-info' : 'badge-danger'}">${account.session_exists ? 'SESSION FILE' : 'NO SESSION'}</span>
+                            <span class="badge ${account.env_exists ? 'badge-success' : 'badge-warning'}">${account.env_exists ? 'ENV FILE' : 'NO ENV'}</span>
+                        </div>
+                        <div class="account-meta">
+                            <div><span>Name</span><b>${esc(user.first_name || '—')}</b></div>
+                            <div><span>Username</span><b>${user.username ? '@' + esc(user.username) : '—'}</b></div>
+                            <div><span>User ID</span><b>${esc(user.id || '—')}</b></div>
+                            <div><span>Phone</span><b>${esc(account.phone || '—')}</b></div>
+                        </div>
+                        <div class="account-actions">
+                            <button class="btn" data-action="reconnect" data-name="${esc(account.name)}" ${canReconnect ? '' : 'disabled'}>Reconnect</button>
+                            <button class="btn" data-action="disconnect" data-name="${esc(account.name)}" ${canDisconnect ? '' : 'disabled'}>Disconnect</button>
+                            <button class="btn btn-danger" data-action="delete" data-name="${esc(account.name)}">Delete</button>
+                        </div>
+                    </article>`;
+            }).join('');
+        }
+
+        async function onAccountAction(event) {
+            const btn = event.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const name = btn.dataset.name;
+            if (action === 'reconnect') {
+                setLoading(btn, true, 'Connecting…');
+                try {
+                    await api(`/api/accounts/${encodeURIComponent(name)}/reconnect`, { method: 'POST' });
+                    toast(`Account "${name}" reconnected.`, 'success');
+                    await refreshStatus(); await refreshConfig();
+                } catch (err) { toast(errorMessage(err), 'error'); }
+                finally { setLoading(btn, false); }
+            }
+            if (action === 'disconnect') {
+                setLoading(btn, true, 'Disconnecting…');
+                try {
+                    await api(`/api/accounts/${encodeURIComponent(name)}/disconnect`, { method: 'POST' });
+                    toast(`Account "${name}" disconnected.`, 'success');
+                    await refreshStatus();
+                } catch (err) { toast(errorMessage(err), 'error'); }
+                finally { setLoading(btn, false); }
+            }
+            if (action === 'delete') {
+                const ok = await confirmDialog({
+                    title: 'Delete Account',
+                    message: `Account "${name}" will be removed along with its session and env files. This cannot be undone.`,
+                    confirmText: 'Delete', danger: true
+                });
+                if (!ok) return;
+                setLoading(btn, true, 'Deleting…');
+                try {
+                    await api(`/api/accounts/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                    toast(`Account "${name}" deleted.`, 'success');
+                    await refreshStatus(); await refreshConfig();
+                } catch (err) { toast(errorMessage(err), 'error'); }
+                finally { setLoading(btn, false); }
+            }
+        }
+
+        /* ── Rules ──────────────────────────────────────────────────── */
+        function uniqueSessions() {
+            const set = new Set();
+            state.accounts.forEach(a => set.add(a.name));
+            state.sessions.forEach(s => set.add(s));
+            state.rules.forEach(r => { if (r.session) set.add(r.session); });
+            return [...set].sort();
+        }
+
+        function populateSessionFilter() {
+            const select = document.getElementById('session-filter');
+            const current = select.value;
+            const sessions = uniqueSessions();
+            select.innerHTML = '<option value="all">All sessions</option>' +
+                sessions.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+            if ([...select.options].some(o => o.value === current)) select.value = current;
+        }
+
+        function getVisibleRules() {
+            let visible = state.rules;
+            if (sessionFilter !== 'all') visible = visible.filter(r => r.session === sessionFilter);
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                visible = visible.filter(r =>
+                    String(r.button_keyword || '').toLowerCase().includes(q) ||
+                    String(r.session || '').toLowerCase().includes(q) ||
+                    (r.bot_ids || []).some(b => String(b).toLowerCase().includes(q))
+                );
+            }
+            return visible;
+        }
+
+        function bulkToggle(enabled) {
+            const visible = getVisibleRules();
+            if (!visible.length) { toast('No visible rules to toggle.', 'warning'); return; }
+            const ids = new Set(visible.map(r => r.id));
+            state.rules.forEach(r => { if (ids.has(r.id)) r.enabled = enabled; });
+            state.unsaved = true;
+            document.getElementById('save-config-hint').hidden = false;
+            renderRules();
+            toast(`${visible.length} rule(s) ${enabled ? 'enabled' : 'disabled'}. Save to apply.`, 'warning');
+        }
+
+        function renderChipList(items, max = 3) {
+            const list = Array.isArray(items) ? items : [];
+            if (!list.length) return '<span class="muted">—</span>';
+            const chips = list.slice(0, max).map(item => `<span class="mini-chip">${esc(item)}</span>`).join('');
+            const more = list.length > max ? `<span class="mini-chip more">+${list.length - max}</span>` : '';
+            return chips + more;
+        }
+
+        function matchModeBadge(mode) {
+            const m = String(mode || 'contains').toLowerCase();
+            if (m === 'regex') return '<span class="badge badge-warning">REGEX</span>';
+            if (m === 'exact') return '<span class="badge badge-info">EXACT</span>';
+            return '<span class="badge badge-success">CONTAINS</span>';
+        }
+
+        function renderSelfBadges(rule) {
+            const badges = [];
+            const hasSelf = rule.require_mention || rule.require_reply || rule.require_my_id_in_data;
+            if (rule.require_mention) badges.push('<span class="badge badge-info">MENTION</span>');
+            if (rule.require_reply) badges.push('<span class="badge badge-info">REPLY</span>');
+            if (rule.require_my_id_in_data) badges.push('<span class="badge badge-info">MY-ID</span>');
+            if (hasSelf && rule.self_filter_logic === 'or') badges.push('<span class="badge">OR</span>');
+            if (rule.click_all_matches) badges.push('<span class="badge badge-warning">ALL MATCHES</span>');
+            return badges.join(' ');
+        }
+
+        function renderPerfStrip(rule) {
+            const delay = Number(rule.reaction_delay_ms ?? 0);
+            const skip = rule.skip_first_refresh !== false;
+            const refreshEvery = Number(rule.refresh_every_n_clicks ?? 5);
+            const burst = Number(rule.burst_count ?? 0);
+            const chips = [];
+            chips.push(delay > 0
+                ? `<span class="perf-chip">⏱ delay ${esc(delay)}ms</span>`
+                : `<span class="perf-chip fast">⚡ instant</span>`);
+            if (skip) chips.push('<span class="perf-chip fast">skip-refresh</span>');
+            chips.push(refreshEvery > 0
+                ? `<span class="perf-chip">refresh/${esc(refreshEvery)}</span>`
+                : '<span class="perf-chip hot">no-refresh</span>');
+            if (burst > 0) chips.push(`<span class="perf-chip hot">burst ${esc(burst)}</span>`);
+            return `<div class="perf-strip">${chips.join('')}</div>`;
+        }
+
+        function renderRules() {
+            const list = document.getElementById('rules-list');
+            document.getElementById('save-config-hint').hidden = !state.unsaved;
+            populateSessionFilter();
+
+            const visible = getVisibleRules();
+
+            if (!state.rules.length) {
+                list.innerHTML = '<div class="empty-state">No rules defined yet.<br>Add a rule to start clicking inline buttons automatically.</div>';
+                return;
+            }
+            if (!visible.length) {
+                list.innerHTML = '<div class="empty-state">No rules match the current search / filter.</div>';
+                return;
+            }
+
+            list.innerHTML = visible.map(rule => {
+                const chatsCell = rule.chat_mode === 'all'
+                    ? '<span class="badge badge-warning">ALL CHATS</span>'
+                    : renderChipList(rule.chat_ids);
+                const caseBadge = rule.case_sensitive ? '<span class="badge">Aa</span>' : '';
+                return `
+                    <article class="rule-card">
+                        <div class="rule-head">
+                            <div class="rule-title">
+                                <span class="badge badge-info">${esc(rule.session)}</span>
+                                <span class="rule-id">#${esc(String(rule.id || '').slice(0, 8))}</span>
+                                ${renderSelfBadges(rule)}
+                            </div>
+                            <label class="switch" title="Enabled">
+                                <input type="checkbox" data-id="${esc(rule.id)}" ${rule.enabled ? 'checked' : ''}>
+                                <span></span>
+                            </label>
+                        </div>
+                        <div class="rule-grid">
+                            <div class="rule-field"><span>Target Bots</span><div class="chip-row">${renderChipList(rule.bot_ids)}</div></div>
+                            <div class="rule-field"><span>Target Chats</span><div class="chip-row">${chatsCell}</div></div>
+                            <div class="rule-field"><span>Button Keyword</span>
+                                <div class="chip-row"><b>${esc(rule.button_keyword)}</b> ${matchModeBadge(rule.match_mode)} ${caseBadge}</div>
+                            </div>
+                            <div class="rule-field"><span>Rate / Timeout</span><b>${esc(rule.clicks_per_second)} cps / ${esc(rule.timeout)}s</b></div>
+                        </div>
+                        ${renderPerfStrip(rule)}
+                        <div class="rule-actions">
+                            <button class="btn" data-action="edit" data-id="${esc(rule.id)}">Edit</button>
+                            <button class="btn" data-action="copy" data-id="${esc(rule.id)}">Copy</button>
+                            <button class="btn btn-danger" data-action="delete" data-id="${esc(rule.id)}">Delete</button>
+                        </div>
+                    </article>`;
+            }).join('');
+        }
+
+        function onRuleToggle(event) {
+            const input = event.target.closest('input[data-id]');
+            if (!input) return;
+            const rule = state.rules.find(item => String(item.id) === String(input.dataset.id));
+            if (!rule) return;
+            rule.enabled = input.checked;
+            state.unsaved = true;
+            document.getElementById('save-config-hint').hidden = false;
+        }
+
+        async function onRuleAction(event) {
+            const btn = event.target.closest('[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            const rule = state.rules.find(item => String(item.id) === String(id));
+            if (action === 'edit') openRuleModal(rule);
+            if (action === 'copy') copyRule(rule);
+            if (action === 'delete') {
+                const ok = await confirmDialog({
+                    title: 'Delete Rule',
+                    message: 'This rule will be removed. Remember to save the config to apply the change.',
+                    confirmText: 'Delete', danger: true
+                });
+                if (!ok) return;
+                state.rules = state.rules.filter(item => String(item.id) !== String(id));
+                state.unsaved = true;
+                renderRules();
+                toast('Rule removed. Save the config to apply.', 'warning');
+            }
+        }
+
+        function copyRule(rule) {
+            if (!rule) return;
+            const copy = { ...rule };
+            delete copy.id; delete copy.session; delete copy.created_at; delete copy.updated_at;
+            ruleClipboard = copy;
+            try { navigator.clipboard.writeText(JSON.stringify(copy, null, 2)); } catch (e) { /* ignore */ }
+            updatePasteButton();
+            toast(`Rule "${rule.button_keyword}" copied. Use Paste to duplicate it to other sessions.`, 'success');
+        }
+
+        function updatePasteButton() {
+            const btn = document.getElementById('btn-paste-rule');
+            btn.disabled = !ruleClipboard;
+            if (ruleClipboard) {
+                btn.innerHTML = `📋 Paste Rule <span class="mini-chip" style="margin-left:4px;">${esc(ruleClipboard.button_keyword || '')}</span>`;
+            } else {
+                btn.innerHTML = '📋 Paste Rule';
+            }
+        }
+
+        function openPasteDialog() {
+            if (!ruleClipboard) return;
+            const sessions = uniqueSessions();
+            const clip = ruleClipboard;
+            const sessionChecks = sessions.length
+                ? sessions.map(s => `
+                    <label class="checkbox dup-check">
+                        <input type="checkbox" class="dup-session" value="${esc(s)}"> ${esc(s)}
+                    </label>`).join('')
+                : '<div class="field-hint">No sessions found yet. Add an account first.</div>';
+
+            const content = `
+                <div class="modal-header">
+                    <div>
+                        <h3>Paste / Duplicate Rule</h3>
+                        <p>Copy the rule below to one or more sessions. A new rule is created for each selected session.</p>
+                    </div>
+                    <button class="icon-btn" data-close>✕</button>
+                </div>
+                <div class="dup-preview">
+                    <div class="dup-preview-row"><span>Keyword</span><b>${esc(clip.button_keyword || '')}</b></div>
+                    <div class="dup-preview-row"><span>Mode</span><b>${esc(clip.match_mode || 'contains')}${clip.case_sensitive ? ' (case-sensitive)' : ''}</b></div>
+                    <div class="dup-preview-row"><span>Bots</span><b>${esc((clip.bot_ids || []).join(', '))}</b></div>
+                    <div class="dup-preview-row"><span>Chats</span><b>${clip.chat_mode === 'all' ? 'ALL CHATS' : esc((clip.chat_ids || []).join(', '))}</b></div>
+                    <div class="dup-preview-row"><span>Rate</span><b>${esc(clip.clicks_per_second)} cps / ${esc(clip.timeout)}s</b></div>
+                </div>
+                <div>
+                    <label>Target sessions<span class="req">*</span></label>
+                    <div class="dup-sessions">${sessionChecks}</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" id="dup-confirm">Duplicate</button>
+                    <button class="btn" data-close>Cancel</button>
+                </div>`;
+
+            const modal = openModal(content);
+            modal.modal.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', modal.close));
+            modal.modal.querySelector('#dup-confirm').addEventListener('click', () => {
+                const checked = [...modal.modal.querySelectorAll('.dup-session:checked')].map(c => c.value);
+                if (!checked.length) { toast('Select at least one target session.', 'error'); return; }
+                const now = Math.floor(Date.now() / 1000);
+                checked.forEach(session => {
+                    state.rules.push({
+                        ...ruleClipboard,
+                        id: generateId(),
+                        session,
+                        enabled: true,
+                        created_at: now,
+                        updated_at: now
+                    });
+                });
+                state.unsaved = true;
+                document.getElementById('save-config-hint').hidden = false;
+                renderRules();
+                modal.close();
+                toast(`Duplicated rule to ${checked.length} session(s). Save to apply.`, 'success');
+            });
+        }
+
+        function generateId() {
+            if (window.crypto && crypto.randomUUID) return crypto.randomUUID().slice(0, 12);
+            return Math.random().toString(36).slice(2, 14);
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function openSettingsModal() {
+            const s = state.settings;
+            const d = state.defaults;
+            const content = `
+                <div class="modal-header">
+                    <div>
+                        <h3>Global Settings</h3>
+                        <p>These apply to all accounts. Save the config to activate.</p>
+                    </div>
+                    <button class="icon-btn" data-close>✕</button>
+                </div>
+                <div class="form">
+                    <div>
+                        <label>Workers per session</label>
+                        <input id="set-workers" type="number" step="1" min="${d.min_workers}" max="${d.max_workers}" value="${esc(s.workers_per_session)}">
+                        <div class="field-hint">Parallel message-processing workers for each account. Higher = faster reaction under load. (${d.min_workers}–${d.max_workers})</div>
+                    </div>
+                    <div>
+                        <label>Max concurrent clicks per session</label>
+                        <input id="set-max-clicks" type="number" step="1" min="0" max="${d.max_concurrent_clicks_cap}" value="${esc(s.max_concurrent_clicks_per_session)}">
+                        <div class="field-hint">0 = unlimited. Cap simultaneous click requests per account to control FloodWait risk.</div>
+                    </div>
+                    <label class="checkbox">
+                        <input id="set-quiet" type="checkbox" ${s.quiet_mode ? 'checked' : ''}>
+                        Quiet mode (only warnings and errors in the log)
+                    </label>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" id="settings-save">Apply</button>
+                    <button class="btn" data-close>Cancel</button>
+                </div>`;
+            const modal = openModal(content);
+            modal.modal.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', modal.close));
+            modal.modal.querySelector('#settings-save').addEventListener('click', () => {
+                const workers = parseInt(modal.modal.querySelector('#set-workers').value, 10);
+                const maxClicks = parseInt(modal.modal.querySelector('#set-max-clicks').value, 10);
+                state.settings.workers_per_session = clamp(Number.isFinite(workers) ? workers : d.workers_per_session, d.min_workers, d.max_workers);
+                state.settings.max_concurrent_clicks_per_session = clamp(Number.isFinite(maxClicks) ? maxClicks : 0, 0, d.max_concurrent_clicks_cap);
+                state.settings.quiet_mode = modal.modal.querySelector('#set-quiet').checked;
+                state.unsaved = true;
+                document.getElementById('save-config-hint').hidden = false;
+                modal.close();
+                toast('Settings updated. Save the config to apply.', 'warning');
+            });
+        }
+
+        function exportConfig() {
+            const data = { settings: state.settings, rules: state.rules };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'auto_clicker_config.json';
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            toast('Config exported as auto_clicker_config.json.', 'success');
+        }
+
+        async function importConfig(file) {
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    const data = JSON.parse(reader.result);
+                    if (!Array.isArray(data.rules)) throw new Error('Invalid config: no "rules" array');
+                    const ok = await confirmDialog({
+                        title: 'Import Config',
+                        message: `This will replace your current ${state.rules.length} rule(s) and settings with the imported file. Continue?`,
+                        confirmText: 'Import', danger: true
+                    });
+                    if (!ok) return;
+                    state.rules = data.rules;
+                    if (data.settings) state.settings = { ...state.settings, ...data.settings };
+                    state.unsaved = true;
+                    document.getElementById('save-config-hint').hidden = false;
+                    renderRules();
+                    toast('Config imported. Save to apply.', 'warning');
+                } catch (e) {
+                    toast('Import failed: ' + e.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function openRuleModal(rule = null) {
+            const isEdit = Boolean(rule);
+            const sessions = uniqueSessions();
+            const datalist = sessions.map(session => `<option value="${esc(session)}"></option>`).join('');
+
+            const modes = (Array.isArray(state.defaults.match_modes) && state.defaults.match_modes.length)
+                ? state.defaults.match_modes : ['contains', 'exact', 'regex'];
+            const currentMode = rule && rule.match_mode ? rule.match_mode : state.defaults.default_match_mode;
+            const modeLabels = {
+                contains: 'Contains — keyword anywhere in the button',
+                exact: 'Exact — full button text must match',
+                regex: 'Regex — advanced pattern matching'
+            };
+            const modeOptions = modes.map(m => `<option value="${esc(m)}" ${currentMode === m ? 'selected' : ''}>${esc(modeLabels[m] || m)}</option>`).join('');
+
+            const initialChatMode = rule && rule.chat_mode === 'all' ? 'all' : 'list';
+            const d = state.defaults;
+            const selfLogic = rule && rule.self_filter_logic === 'or' ? 'or' : 'and';
+
+            const content = `
+                <div class="modal-header">
+                    <div>
+                        <h3>${isEdit ? 'Edit Rule' : 'Add Rule'}</h3>
+                        <p>A message triggers this rule when its sender matches ANY target bot, its chat matches the chat selection, and ANY inline button contains the keyword.</p>
+                    </div>
+                    <button class="icon-btn" data-close>✕</button>
+                </div>
+
+                <form id="rule-form" class="form">
+                    <div>
+                        <label>Session Name<span class="req">*</span></label>
+                        <input id="rule-session" type="text" list="sessions-list" value="${esc(rule ? rule.session : '')}" placeholder="account" required>
+                        <datalist id="sessions-list">${datalist}</datalist>
+                    </div>
+
+                    <div>
+                        <label>Target Bots<span class="req">*</span></label>
+                        <div class="tag-input" id="rule-bots">
+                            <span class="tag-chips"></span>
+                            <input type="text" placeholder="@username or numeric ID — press Enter to add">
+                        </div>
+                        <div class="field-hint">Add one or more bots. Matching ANY of them is enough.</div>
+                    </div>
+
+                    <div>
+                        <label>Target Chats</label>
+                        <div class="seg" id="chat-mode-seg" style="margin-bottom: 10px;">
+                            <button type="button" class="seg-btn" data-mode="all">ALL CHATS</button>
+                            <button type="button" class="seg-btn" data-mode="list">SPECIFIC CHATS</button>
+                        </div>
+                        <div id="all-chats-note" class="field-hint" style="display: none;">
+                            <span class="led warn" style="display:inline-block; vertical-align: middle; margin-right: 6px;"></span>
+                            Every group and channel this account can see will be monitored. Private chats are excluded.
+                        </div>
+                        <div id="rule-chats-wrap">
+                            <div class="tag-input" id="rule-chats">
+                                <span class="tag-chips"></span>
+                                <input type="text" placeholder="-1001234567890 or @username — press Enter to add">
+                            </div>
+                            <div class="field-hint">Add one or more chats. Matching ANY of them is enough.</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label>Button Keyword<span class="req">*</span></label>
+                        <div class="form-grid">
+                            <div><input id="rule-keyword" type="text" value="${esc(rule ? rule.button_keyword : '')}" placeholder="Claim" required></div>
+                            <div><select id="rule-match-mode">${modeOptions}</select></div>
+                        </div>
+                        <label class="checkbox" style="margin-top: 10px;">
+                            <input id="rule-case-sensitive" type="checkbox" ${rule && rule.case_sensitive ? 'checked' : ''}> Case sensitive
+                        </label>
+                        <label class="checkbox" style="margin-top: 10px;">
+                            <input id="rule-click-all" type="checkbox" ${rule && rule.click_all_matches ? 'checked' : ''}>
+                            Click ALL matching buttons (not just the first)
+                        </label>
+                        <div class="tester">
+                            <div class="tester-label">
+                                <span>Matcher tester — sample button text</span>
+                                <span class="tester-result" id="tester-result">AWAITING INPUT</span>
+                            </div>
+                            <input id="tester-text" type="text" placeholder="🎁 Claim Now!">
+                        </div>
+                    </div>
+
+                    <div class="self-section">
+                        <div class="self-header"><span class="led ok"></span> SELF-TARGETING</div>
+                        <div class="field-hint" style="margin-top:0;margin-bottom:10px;">
+                            Only react to messages addressed to THIS account. Prevents clicking buttons meant for other users in shared groups.
+                        </div>
+                        <div class="self-grid">
+                            <label class="checkbox"><input id="rule-require-mention" type="checkbox" ${rule && rule.require_mention ? 'checked' : ''}> Require mention</label>
+                            <label class="checkbox"><input id="rule-require-reply" type="checkbox" ${rule && rule.require_reply ? 'checked' : ''}> Require reply</label>
+                            <label class="checkbox"><input id="rule-require-myid" type="checkbox" ${rule && rule.require_my_id_in_data ? 'checked' : ''}> Require my ID in button data</label>
+                            <div>
+                                <label style="margin-bottom:7px;">Combine with</label>
+                                <select id="rule-self-logic">
+                                    <option value="and" ${selfLogic === 'and' ? 'selected' : ''}>AND — all enabled must pass</option>
+                                    <option value="or" ${selfLogic === 'or' ? 'selected' : ''}>OR — any enabled passes</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="field-hint" style="margin-top:10px;">
+                            “My ID in button data” is the most precise for bots that embed your user ID in the callback payload
+                            (e.g. collect_cat_5732825265). If nothing is checked, the rule reacts to any matching message.
+                        </div>
+                    </div>
+
+                    <div class="perf-section">
+                        <div class="perf-header"><span class="led ok"></span> LATENCY &amp; RATE</div>
+                        <div class="perf-grid">
+                            <div>
+                                <label>Clicks / Second</label>
+                                <input id="rule-cps" type="number" step="0.1" min="${d.min_cps}" max="${d.max_cps}" value="${esc(rule ? rule.clicks_per_second : d.cps)}">
+                            </div>
+                            <div>
+                                <label>Timeout (seconds)</label>
+                                <input id="rule-timeout" type="number" step="1" min="1" max="${d.max_timeout}" value="${esc(rule ? rule.timeout : d.timeout)}">
+                            </div>
+                            <div>
+                                <label>Reaction Delay (ms)</label>
+                                <input id="rule-reaction-delay" type="number" step="1" min="0" max="${d.max_reaction_delay_ms}" value="${esc(rule ? rule.reaction_delay_ms : d.reaction_delay_ms)}">
+                            </div>
+                            <div>
+                                <label>Refresh Every N Clicks</label>
+                                <input id="rule-refresh-every" type="number" step="1" min="0" max="${d.max_refresh_every_n_clicks}" value="${esc(rule ? rule.refresh_every_n_clicks : d.refresh_every_n_clicks)}">
+                            </div>
+                            <div>
+                                <label>Burst Count</label>
+                                <input id="rule-burst-count" type="number" step="1" min="0" max="${d.max_burst_count}" value="${esc(rule ? rule.burst_count : d.burst_count)}">
+                            </div>
+                            <div style="align-self: end;">
+                                <label class="checkbox">
+                                    <input id="rule-skip-first-refresh" type="checkbox" ${!rule || rule.skip_first_refresh !== false ? 'checked' : ''}>
+                                    Skip first refresh
+                                </label>
+                            </div>
+                        </div>
+                        <div class="field-hint" style="margin-top: 10px;">
+                            Reaction Delay: wait before the first click (0 = instant).
+                            Skip First Refresh: click using the received message directly (fastest).
+                            Refresh Every N: re-check the button every N clicks (0 = never).
+                            Burst: first N clicks with no inter-click delay.
+                        </div>
+                        <div class="flood-warning" id="flood-warning">
+                            <span class="led warn"></span>
+                            <span>High burst / CPS values increase the risk of Telegram FloodWait or account restrictions. Use conservatively.</span>
+                        </div>
+                    </div>
+
+                    <label class="checkbox">
+                        <input id="rule-enabled" type="checkbox" ${!rule || rule.enabled ? 'checked' : ''}> Rule enabled
+                    </label>
+
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary">${isEdit ? 'Save Changes' : 'Add Rule'}</button>
+                        <button type="button" class="btn" data-close>Cancel</button>
+                    </div>
+                </form>`;
+
+            const modal = openModal(content, { wide: true });
+            modal.modal.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', modal.close));
+
+            const botsTag = createTagInput(modal.modal.querySelector('#rule-bots'));
+            const chatsTag = createTagInput(modal.modal.querySelector('#rule-chats'));
+            if (isEdit) {
+                botsTag.setValues(rule.bot_ids || []);
+                chatsTag.setValues(rule.chat_ids || []);
+            }
+
+            let chatMode = initialChatMode;
+            const chatsWrap = modal.modal.querySelector('#rule-chats-wrap');
+            const allNote = modal.modal.querySelector('#all-chats-note');
+            function syncChatMode() {
+                modal.modal.querySelectorAll('#chat-mode-seg .seg-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === chatMode));
+                chatsWrap.style.display = chatMode === 'list' ? '' : 'none';
+                allNote.style.display = chatMode === 'all' ? '' : 'none';
+            }
+            modal.modal.querySelector('#chat-mode-seg').addEventListener('click', event => {
+                const btn = event.target.closest('.seg-btn');
+                if (!btn) return;
+                chatMode = btn.dataset.mode;
+                syncChatMode();
+            });
+            syncChatMode();
+
+            const keywordInput = modal.modal.querySelector('#rule-keyword');
+            const modeSelect = modal.modal.querySelector('#rule-match-mode');
+            const caseChk = modal.modal.querySelector('#rule-case-sensitive');
+            const testerText = modal.modal.querySelector('#tester-text');
+            const testerResult = modal.modal.querySelector('#tester-result');
+            function runTester() {
+                const keyword = keywordInput.value.trim();
+                const mode = modeSelect.value;
+                const caseSensitive = caseChk.checked;
+                const sample = testerText.value;
+                if (!keyword || !sample) {
+                    testerResult.textContent = 'AWAITING INPUT'; testerResult.className = 'tester-result'; return;
+                }
+                if (mode === 'regex') {
+                    try { new RegExp(keyword, caseSensitive ? '' : 'i'); }
+                    catch (err) { testerResult.textContent = 'INVALID REGEX'; testerResult.className = 'tester-result warn'; return; }
+                }
+                const matched = buttonMatches(sample, keyword, mode, caseSensitive);
+                testerResult.textContent = matched ? 'MATCH' : 'NO MATCH';
+                testerResult.className = `tester-result ${matched ? 'good' : 'bad'}`;
+            }
+            keywordInput.addEventListener('input', runTester);
+            testerText.addEventListener('input', runTester);
+            modeSelect.addEventListener('change', runTester);
+            caseChk.addEventListener('change', runTester);
+
+            const cpsInput = modal.modal.querySelector('#rule-cps');
+            const burstInput = modal.modal.querySelector('#rule-burst-count');
+            const floodWarn = modal.modal.querySelector('#flood-warning');
+            function updateFloodWarning() {
+                const cpsVal = parseFloat(cpsInput.value) || 0;
+                const burstVal = parseInt(burstInput.value, 10) || 0;
+                floodWarn.classList.toggle('visible', cpsVal > 10 || burstVal > 0);
+            }
+            cpsInput.addEventListener('input', updateFloodWarning);
+            burstInput.addEventListener('input', updateFloodWarning);
+            updateFloodWarning();
+
+            modal.modal.querySelector('#rule-form').addEventListener('submit', event => {
+                event.preventDefault();
+                const session = modal.modal.querySelector('#rule-session').value.trim();
+                const botIds = botsTag.getValues();
+                const chatIds = chatsTag.getValues();
+                const keyword = keywordInput.value.trim();
+                const mode = modeSelect.value;
+                const caseSensitive = caseChk.checked;
+                const clickAll = modal.modal.querySelector('#rule-click-all').checked;
+                const requireMention = modal.modal.querySelector('#rule-require-mention').checked;
+                const requireReply = modal.modal.querySelector('#rule-require-reply').checked;
+                const requireMyId = modal.modal.querySelector('#rule-require-myid').checked;
+                const selfLogic = modal.modal.querySelector('#rule-self-logic').value;
+                const cps = parseFloat(cpsInput.value);
+                const timeout = parseFloat(modal.modal.querySelector('#rule-timeout').value);
+                const reactionDelay = parseFloat(modal.modal.querySelector('#rule-reaction-delay').value);
+                const refreshEvery = parseInt(modal.modal.querySelector('#rule-refresh-every').value, 10);
+                const burstCount = parseInt(modal.modal.querySelector('#rule-burst-count').value, 10);
+                const skipFirstRefresh = modal.modal.querySelector('#rule-skip-first-refresh').checked;
+                const enabled = modal.modal.querySelector('#rule-enabled').checked;
+
+                if (!session) { toast('Session name is required.', 'error'); return; }
+                if (!botIds.length) { toast('Add at least one target bot.', 'error'); botsTag.focus(); return; }
+                if (chatMode === 'list' && !chatIds.length) { toast('Add at least one target chat, or switch to ALL CHATS.', 'error'); chatsTag.focus(); return; }
+                if (!keyword) { toast('Button keyword is required.', 'error'); return; }
+                if (mode === 'regex') {
+                    try { new RegExp(keyword, caseSensitive ? '' : 'i'); }
+                    catch (err) { toast(`Invalid regular expression: ${err.message}`, 'error'); return; }
+                }
+
+                const now = Math.floor(Date.now() / 1000);
+                const newRule = {
+                    id: rule ? rule.id : generateId(),
+                    session,
+                    bot_ids: botIds,
+                    chat_mode: chatMode,
+                    chat_ids: chatMode === 'list' ? chatIds : [],
+                    button_keyword: keyword,
+                    match_mode: mode,
+                    case_sensitive: caseSensitive,
+                    click_all_matches: clickAll,
+                    require_mention: requireMention,
+                    require_reply: requireReply,
+                    require_my_id_in_data: requireMyId,
+                    self_filter_logic: selfLogic,
+                    clicks_per_second: clamp(Number.isFinite(cps) ? cps : d.cps, d.min_cps, d.max_cps),
+                    timeout: clamp(Number.isFinite(timeout) ? timeout : d.timeout, 1, d.max_timeout),
+                    reaction_delay_ms: clamp(Number.isFinite(reactionDelay) ? reactionDelay : d.reaction_delay_ms, 0, d.max_reaction_delay_ms),
+                    refresh_every_n_clicks: clamp(Number.isFinite(refreshEvery) ? refreshEvery : d.refresh_every_n_clicks, 0, d.max_refresh_every_n_clicks),
+                    burst_count: clamp(Number.isFinite(burstCount) ? burstCount : d.burst_count, 0, d.max_burst_count),
+                    skip_first_refresh: skipFirstRefresh,
+                    enabled,
+                    created_at: rule && rule.created_at ? rule.created_at : now,
+                    updated_at: now
+                };
+
+                if (isEdit) {
+                    const index = state.rules.findIndex(item => String(item.id) === String(rule.id));
+                    if (index >= 0) state.rules[index] = newRule;
+                } else {
+                    state.rules.push(newRule);
+                }
+
+                state.unsaved = true;
+                renderRules();
+                modal.close();
+                toast(isEdit ? 'Rule updated.' : 'Rule added.', 'success');
+                toast('Press “Save Config” to apply your changes.', 'warning');
+            });
+        }
+
+        async function saveConfig() {
+            const btn = document.getElementById('btn-save-config');
+            setLoading(btn, true, 'Saving…');
+            try {
+                await api('/api/config', {
+                    method: 'POST',
+                    body: { rules: state.rules, settings: state.settings }
+                });
+                state.unsaved = false;
+                document.getElementById('save-config-hint').hidden = true;
+                toast('Configuration saved.', 'success');
+                await refreshConfig();
+                await refreshStatus();
+            } catch (err) {
+                toast(errorMessage(err), 'error');
+            } finally {
+                setLoading(btn, false);
+            }
+        }
+
+        /* ── Account login wizard ───────────────────────────────────── */
+        function openAddAccountWizard() {
+            wizard.session = ''; wizard.payload = null;
+            wizard.modal = openModal('', { wide: true, dismissable: false });
+            renderWizardStep1();
+        }
+
+        function setWizardContent(html) {
+            if (!wizard.modal) return;
+            wizard.modal.modal.innerHTML = html;
+            wizard.modal.modal.querySelectorAll('[data-wizard-close]').forEach(btn => btn.addEventListener('click', cancelWizard));
+        }
+
+        function wizardHeader(step, title, subtitle) {
+            const steps = [
+                { n: 1, label: 'Credentials' },
+                { n: 2, label: 'Login Code' },
+                { n: 3, label: 'Verification' }
+            ];
+            const stepsHtml = steps.map(item => `<span class="wizard-step ${item.n === step ? 'active' : ''}">${item.n}. ${item.label}</span>`).join('');
+            return `
+                <div class="modal-header">
+                    <div><h3>${esc(title)}</h3><p>${esc(subtitle)}</p></div>
+                    <button class="icon-btn" data-wizard-close>✕</button>
+                </div>
+                <div class="wizard-steps">${stepsHtml}</div>`;
+        }
+
+        function renderWizardStep1() {
+            const p = wizard.payload || {};
+            const html = wizardHeader(1, 'Add Telegram Account', 'Enter your API credentials and phone number. A login code will be requested next.') + `
+                <form id="wizard-form" class="form">
+                    <div class="form-grid">
+                        <div><label>Session Name<span class="req">*</span></label>
+                            <input id="w-session" type="text" placeholder="account" value="${esc(p.session_name || '')}" pattern="[A-Za-z0-9_-]{1,64}" required></div>
+                        <div><label>Phone Number<span class="req">*</span></label>
+                            <input id="w-phone" type="text" placeholder="+989999999999" value="${esc(p.phone || '')}" required></div>
+                        <div><label>API ID<span class="req">*</span></label>
+                            <input id="w-api-id" type="number" placeholder="123321456654" value="${esc(p.api_id || '')}" required></div>
+                        <div><label>API Hash<span class="req">*</span></label>
+                            <input id="w-api-hash" type="text" placeholder="123abc…" value="${esc(p.api_hash || '')}" required></div>
+                    </div>
+                    <label class="checkbox">
+                        <input id="w-save-env" type="checkbox" ${p.save_env !== false ? 'checked' : ''}>
+                        Store API credentials in sessions/&lt;name&gt;.env
+                    </label>
+                    <details>
+                        <summary>Advanced options</summary>
+                        <div style="margin-top: 10px;">
+                            <label class="checkbox">
+                                <input id="w-force" type="checkbox" ${p.force ? 'checked' : ''}>
+                                Delete existing session and log in again (force)
+                            </label>
+                        </div>
+                    </details>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary" id="w-start">Start Login</button>
+                        <button type="button" class="btn" data-wizard-close>Cancel</button>
+                    </div>
+                </form>`;
+            setWizardContent(html);
+            wizard.modal.modal.querySelector('#wizard-form').addEventListener('submit', async event => {
+                event.preventDefault();
+                const payload = {
+                    session_name: wizard.modal.modal.querySelector('#w-session').value.trim(),
+                    phone: wizard.modal.modal.querySelector('#w-phone').value.trim(),
+                    api_id: wizard.modal.modal.querySelector('#w-api-id').value.trim(),
+                    api_hash: wizard.modal.modal.querySelector('#w-api-hash').value.trim(),
+                    save_env: wizard.modal.modal.querySelector('#w-save-env').checked,
+                    force: wizard.modal.modal.querySelector('#w-force').checked
+                };
+                if (!payload.session_name || !payload.phone || !payload.api_id || !payload.api_hash) {
+                    toast('All required fields must be filled.', 'error'); return;
+                }
+                wizard.payload = payload; wizard.session = payload.session_name;
+                const btn = wizard.modal.modal.querySelector('#w-start');
+                setLoading(btn, true, 'Contacting Telegram…');
+                try {
+                    const data = await api('/api/accounts/login/start', { method: 'POST', body: payload });
+                    handleLoginResponse(data);
+                } catch (err) {
+                    if (err.data && err.data.state) { wizard.session = payload.session_name; handleLoginState(err.data.state); }
+                    else toast(errorMessage(err), 'error');
+                } finally { setLoading(btn, false); }
+            });
+        }
+
+        function handleLoginResponse(data) {
+            if (!wizard.modal) return;
+            if (data.status === 'authorized') {
+                toast('Account added and connected successfully.', 'success');
+                const modal = wizard.modal;
+                wizard.modal = null; wizard.session = ''; wizard.payload = null;
+                modal.close();
+                refreshStatus(); refreshConfig();
+                return;
+            }
+            handleLoginState(data.status);
+        }
+
+        function handleLoginState(status) {
+            if (status === 'code_required') renderWizardStep2();
+            else if (status === 'password_required') renderWizardStep3();
+            else if (status === 'signup_required') renderWizardStep4();
+            else toast(`Unexpected login state: ${status}`, 'error');
+        }
+
+        function renderWizardStep2() {
+            const phone = wizard.payload ? wizard.payload.phone : wizard.session;
+            const html = wizardHeader(2, 'Telegram Login Code', `Enter the code sent to ${phone}. The code is usually delivered inside the Telegram app.`) + `
+                <form id="wizard-form" class="form">
+                    <div class="form-grid one">
+                        <div><label>Login Code<span class="req">*</span></label>
+                            <input id="w-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="12345" autofocus required></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary" id="w-submit">Verify Code</button>
+                        <button type="button" class="btn" data-wizard-close>Cancel</button>
+                    </div>
+                </form>`;
+            setWizardContent(html);
+            wizard.modal.modal.querySelector('#wizard-form').addEventListener('submit', async event => {
+                event.preventDefault();
+                const code = wizard.modal.modal.querySelector('#w-code').value.trim();
+                if (!code) { toast('Enter the login code.', 'error'); return; }
+                const btn = wizard.modal.modal.querySelector('#w-submit');
+                setLoading(btn, true, 'Verifying…');
+                try {
+                    const data = await api('/api/accounts/login/code', { method: 'POST', body: { session_name: wizard.session, code } });
+                    handleLoginResponse(data);
+                } catch (err) {
+                    if (err.status === 410) { toast('The code expired. Please start again.', 'error'); renderWizardStep1(); }
+                    else if (err.data && err.data.state) handleLoginState(err.data.state);
+                    else toast(errorMessage(err), 'error');
+                } finally { setLoading(btn, false); }
+            });
+        }
+
+        function renderWizardStep3() {
+            const html = wizardHeader(3, 'Two-Step Verification', 'This account has 2FA enabled. Enter your Telegram cloud password.') + `
+                <form id="wizard-form" class="form">
+                    <div class="form-grid one">
+                        <div><label>2FA Password<span class="req">*</span></label>
+                            <input id="w-password" type="password" autocomplete="current-password" placeholder="••••••••" autofocus required></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary" id="w-submit">Verify Password</button>
+                        <button type="button" class="btn" data-wizard-close>Cancel</button>
+                    </div>
+                </form>`;
+            setWizardContent(html);
+            wizard.modal.modal.querySelector('#wizard-form').addEventListener('submit', async event => {
+                event.preventDefault();
+                const password = wizard.modal.modal.querySelector('#w-password').value;
+                if (!password) { toast('Enter the 2FA password.', 'error'); return; }
+                const btn = wizard.modal.modal.querySelector('#w-submit');
+                setLoading(btn, true, 'Verifying…');
+                try {
+                    const data = await api('/api/accounts/login/password', { method: 'POST', body: { session_name: wizard.session, password } });
+                    handleLoginResponse(data);
+                } catch (err) {
+                    if (err.data && err.data.state) handleLoginState(err.data.state);
+                    else toast(errorMessage(err), 'error');
+                } finally { setLoading(btn, false); }
+            });
+        }
+
+        function renderWizardStep4() {
+            const html = wizardHeader(3, 'Telegram Signup', 'This phone number is not registered on Telegram yet. Choose a display name.') + `
+                <form id="wizard-form" class="form">
+                    <div class="form-grid">
+                        <div><label>First Name<span class="req">*</span></label>
+                            <input id="w-first-name" type="text" placeholder="First name" autofocus required></div>
+                        <div><label>Last Name</label><input id="w-last-name" type="text" placeholder="Last name"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary" id="w-submit">Create Account</button>
+                        <button type="button" class="btn" data-wizard-close>Cancel</button>
+                    </div>
+                </form>`;
+            setWizardContent(html);
+            wizard.modal.modal.querySelector('#wizard-form').addEventListener('submit', async event => {
+                event.preventDefault();
+                const firstName = wizard.modal.modal.querySelector('#w-first-name').value.trim();
+                const lastName = wizard.modal.modal.querySelector('#w-last-name').value.trim();
+                if (!firstName) { toast('Enter a first name.', 'error'); return; }
+                const btn = wizard.modal.modal.querySelector('#w-submit');
+                setLoading(btn, true, 'Signing up…');
+                try {
+                    const data = await api('/api/accounts/login/signup', {
+                        method: 'POST',
+                        body: { session_name: wizard.session, first_name: firstName, last_name: lastName }
+                    });
+                    handleLoginResponse(data);
+                } catch (err) {
+                    if (err.data && err.data.state) handleLoginState(err.data.state);
+                    else toast(errorMessage(err), 'error');
+                } finally { setLoading(btn, false); }
+            });
+        }
+
+        async function cancelWizard() {
+            if (wizard.session) {
+                try {
+                    await api('/api/accounts/login/cancel', { method: 'POST', body: { session_name: wizard.session } });
+                } catch (err) { /* ignore */ }
+            }
+            if (wizard.modal) {
+                const modal = wizard.modal;
+                wizard.modal = null;
+                modal.close();
+            }
+            wizard.session = ''; wizard.payload = null;
+            refreshStatus();
+        }
+    </script>
+</body>
+</html>
