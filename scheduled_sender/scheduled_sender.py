@@ -28,7 +28,8 @@ from typing import Optional
 
 from aiohttp import web
 from telethon import TelegramClient, events
-from telethon.errors import FloodWaitError, SessionPasswordNeededError, PhoneCodeInvalidError
+from telethon.sessions import StringSession
+from telethon.errors import FloodWaitError, SessionPasswordNeededError, PhoneCodeInvalidError, AuthKeyError
 from telethon.tl.functions.messages import DeleteScheduledMessagesRequest, GetScheduledHistoryRequest
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
@@ -42,11 +43,19 @@ logging.getLogger("telethon").setLevel(logging.ERROR)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-DATA_FILE = "ss_data.json"
-WEB_HOST  = "0.0.0.0"
-WEB_PORT  = 8081
+DATA_FILE     = "accounts.json"
+_LEGACY_FILE  = "ss_data.json"   # pre-v-string-session filename, migrated on first load
+WEB_HOST      = "0.0.0.0"
+WEB_PORT      = 8081
 
 # ─── Storage ──────────────────────────────────────────────────────────────────
+#
+# Every account credential (api_id, api_hash, phone, and — as of this
+# version — session_string, the Telethon StringSession for that account)
+# lives in this single accounts.json, alongside that account's configs.
+# No .session files are created or read anymore, in any code path: not on
+# a fresh full login, and not when importing an already-existing string
+# session. Login/session state is 100% self-contained in accounts.json.
 
 def load_data() -> dict:
     if Path(DATA_FILE).exists():
@@ -55,6 +64,16 @@ def load_data() -> dict:
                 return json.load(f)
         except Exception:
             pass
+    # One-time migration from the old filename, if present.
+    if Path(_LEGACY_FILE).exists():
+        try:
+            with open(_LEGACY_FILE) as f:
+                legacy = json.load(f)
+            logger.info(f"Migrated {_LEGACY_FILE} → {DATA_FILE}")
+            save_data(legacy)
+            return legacy
+        except Exception as e:
+            logger.error(f"Failed to migrate {_LEGACY_FILE}: {e}")
     return {"accounts": {}, "active_account": None}
 
 
@@ -508,11 +527,71 @@ async def do_refill(client: TelegramClient, account_name: str, config_id: str) -
 
 # ─── Client Management ────────────────────────────────────────────────────────
 
+def _build_client(account: dict, name: str) -> TelegramClient:
+    """
+    Build a TelegramClient purely from account["session_string"].
+
+    No .session file is ever created or read here. If the account has no
+    session_string yet (brand-new, not-yet-authorized entry), an empty
+    StringSession() is used, which behaves like a fresh unauthenticated
+    client — is_user_authorized() will simply return False until a login
+    (full or string-import) fills in session_string.
+    """
+    session = StringSession(account.get("session_string", "") or None)
+    return TelegramClient(session, account["api_id"], account["api_hash"])
+
+
+async def _migrate_legacy_file_session(name: str, account: dict) -> None:
+    """
+    One-time upgrade path for accounts created by older versions of this
+    script, which stored a SQLite session at ./session_{name}.session.
+
+    If such a file exists and this account has no session_string yet,
+    open it, derive the equivalent StringSession, save it into
+    accounts.json, and delete the old file — after this, the account
+    behaves exactly like one that was always string-session-only.
+    Silently does nothing if there's no legacy file to migrate.
+    """
+    legacy_path = Path(f"session_{name}.session")
+    if account.get("session_string") or not legacy_path.exists():
+        return
+
+    legacy_client = TelegramClient(str(legacy_path.with_suffix("")), account["api_id"], account["api_hash"])
+    try:
+        await legacy_client.connect()
+        if not await legacy_client.is_user_authorized():
+            logger.warning(f"Legacy session file for '{name}' exists but isn't authorized — leaving it as-is.")
+            return
+        account["session_string"] = StringSession.save(legacy_client.session)
+        save_data(data)
+        logger.info(f"✓ Migrated '{name}' from legacy session file to session_string.")
+    except Exception as e:
+        logger.error(f"Could not migrate legacy session file for '{name}': {e}")
+        return
+    finally:
+        try:
+            await legacy_client.disconnect()
+        except Exception:
+            pass
+
+    # Only remove the old files once the string session was saved successfully.
+    for suffix in ("", "-journal", "-shm", "-wal"):
+        p = Path(f"session_{name}.session{suffix}")
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
 async def start_client(name: str) -> Optional[TelegramClient]:
     account = data["accounts"].get(name)
     if not account:
         return None
-    client = TelegramClient(f"session_{name}", account["api_id"], account["api_hash"])
+
+    await _migrate_legacy_file_session(name, account)
+
+    client = _build_client(account, name)
     try:
         await client.connect()
         if not await client.is_user_authorized():
@@ -819,7 +898,9 @@ async def api_send_code(request):
             return web.json_response({"error": "All fields required"}, status=400)
         if name in data["accounts"]:
             return web.json_response({"error": f"Account '{name}' already exists"}, status=400)
-        client = TelegramClient(f"session_{name}", api_id, api_hash)
+        # In-memory StringSession only — no .session file is written to disk
+        # at any point in this login flow, not even a temporary one.
+        client = TelegramClient(StringSession(), api_id, api_hash)
         await client.connect()
         result = await client.send_code_request(phone)
         pending_auth[phone] = {
@@ -855,7 +936,8 @@ async def api_verify_code(request):
         name = auth["name"]
         data["accounts"][name] = {
             "api_id": auth["api_id"], "api_hash": auth["api_hash"],
-            "phone": auth["phone"], "configs": {},
+            "phone": auth["phone"], "session_string": StringSession.save(client.session),
+            "configs": {},
         }
         if not data.get("active_account"):
             data["active_account"] = name
@@ -865,6 +947,59 @@ async def api_verify_code(request):
         clients[name] = client
         logger.info(f"✓ Account '{name}' authenticated.")
         return web.json_response({"ok": True, "message": f"Account '{name}' added successfully"})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.post("/api/accounts/import_string")
+async def api_import_string_session(request):
+    """
+    Register an account from an already-existing Telethon StringSession —
+    no phone/code/2FA step at all. Verifies the session is actually
+    authorized before saving it, and auto-fills the phone number from
+    Telegram itself so the user doesn't have to type it.
+    """
+    try:
+        body           = await request.json()
+        name           = body.get("name", "").strip()
+        api_id         = int(body.get("api_id", 0))
+        api_hash       = body.get("api_hash", "").strip()
+        session_string = body.get("session_string", "").strip()
+        if not all([name, api_id, api_hash, session_string]):
+            return web.json_response({"error": "All fields required"}, status=400)
+        if name in data["accounts"]:
+            return web.json_response({"error": f"Account '{name}' already exists"}, status=400)
+
+        client = TelegramClient(StringSession(session_string), api_id, api_hash)
+        try:
+            await client.connect()
+        except AuthKeyError:
+            return web.json_response({"error": "Invalid string session (bad auth key)"}, status=400)
+
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            return web.json_response({"error": "This string session is not authorized (expired or logged out)"}, status=400)
+
+        try:
+            me = await client.get_me()
+            phone = f"+{me.phone}" if me and me.phone else ""
+        except Exception:
+            phone = ""
+
+        data["accounts"][name] = {
+            "api_id": api_id, "api_hash": api_hash,
+            "phone": phone, "session_string": session_string,
+            "configs": {},
+        }
+        if not data.get("active_account"):
+            data["active_account"] = name
+        save_data(data)
+        register_cli_handlers(client, name)
+        clients[name] = client
+        logger.info(f"✓ Account '{name}' imported via string session.")
+        return web.json_response({"ok": True, "message": f"Account '{name}' imported successfully", "phone": phone})
+    except FloodWaitError as e:
+        return web.json_response({"error": f"FloodWait: try again in {e.seconds}s"}, status=429)
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 

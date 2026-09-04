@@ -55,6 +55,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 from telethon.errors import (
     AuthKeyError,
     FloodWaitError,
@@ -891,18 +892,104 @@ async def save_config(data: Dict[str, Any]) -> None:
 
 
 # =============================================================================
-# FILESYSTEM HELPERS
+# ACCOUNT STORE (accounts.json — replaces the old per-session .session/.env files)
 # =============================================================================
+#
+# Every account's credentials (api_id, api_hash, phone, and its Telethon
+# StringSession) live in one JSON file, keyed by session_name — the same
+# identifier rules/_clients/_workers already use everywhere else in this
+# file. No .session or .env files are read or written by any code path
+# below, including a brand-new full login: TelegramClient is always built
+# from StringSession(...), and the resulting string is written straight
+# into ACCOUNTS_FILE right after a successful login.
+#
+# accounts.json shape:
+#   { "session_name": {"api_id": int, "api_hash": str, "phone": str,
+#                       "session_string": str}, ... }
 
-def _session_path(session_name: str) -> Path:
+ACCOUNTS_FILE = BASE_DIR / "accounts.json"
+
+_accounts_cache: Dict[str, Dict[str, Any]] = {}
+
+
+def _load_accounts_sync() -> Dict[str, Dict[str, Any]]:
+    if not ACCOUNTS_FILE.exists():
+        return {}
+    try:
+        with open(ACCOUNTS_FILE, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        return raw if isinstance(raw, dict) else {}
+    except (json.JSONDecodeError, OSError) as exc:
+        log.error("accounts.json is corrupted or unreadable (%s). Starting with no accounts.", exc)
+        return {}
+
+
+def _save_accounts_sync() -> None:
+    ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=ACCOUNTS_FILE.parent, prefix=".accounts_tmp_")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            json.dump(_accounts_cache, fh, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, ACCOUNTS_FILE)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _account_record(session_name: str) -> Optional[Dict[str, Any]]:
+    return _accounts_cache.get(session_name)
+
+
+def _upsert_account_record(
+    session_name: str,
+    api_id: int,
+    api_hash: str,
+    phone: str,
+    session_string: str,
+) -> None:
+    _accounts_cache[session_name] = {
+        "api_id": api_id,
+        "api_hash": api_hash,
+        "phone": phone,
+        "session_string": session_string,
+    }
+    _save_accounts_sync()
+
+
+def _delete_account_record(session_name: str) -> None:
+    if session_name in _accounts_cache:
+        del _accounts_cache[session_name]
+        _save_accounts_sync()
+
+
+def _legacy_session_path(session_name: str) -> Path:
     return SESSIONS_DIR / f"{session_name}.session"
 
 
-def _env_path(session_name: str) -> Path:
+def _legacy_env_path(session_name: str) -> Path:
     return SESSIONS_DIR / f"{session_name}.env"
 
 
-def _delete_account_files(session_name: str) -> None:
+def _read_legacy_env_file(path: Path) -> Dict[str, str]:
+    result: Dict[str, str] = {}
+    if not path.exists():
+        return result
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            result[key.strip()] = value.strip().strip('"').strip("'")
+    except OSError as exc:
+        log.warning("Could not read %s: %s", path, exc)
+    return result
+
+
+def _delete_legacy_files(session_name: str) -> None:
     base = SESSIONS_DIR / session_name
     paths = [
         base.with_suffix(".session"),
@@ -919,59 +1006,79 @@ def _delete_account_files(session_name: str) -> None:
             log.warning("Could not delete %s: %s", path, exc)
 
 
-def _read_env_file(path: Path) -> Dict[str, str]:
-    result: Dict[str, str] = {}
-    if not path.exists():
-        return result
-    try:
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
+async def _migrate_legacy_sessions() -> None:
+    """
+    One-time upgrade path for accounts created by older versions of this
+    script, which stored a SQLite session + .env credentials pair per
+    account under sessions/. For each legacy .session file that has no
+    matching accounts.json entry yet, connect with it, derive the
+    equivalent StringSession, save it into accounts.json, and delete the
+    old files. Safe to call on every startup — a no-op once migrated.
+    """
+    if not SESSIONS_DIR.is_dir():
+        return
+    for session_file in sorted(SESSIONS_DIR.glob("*.session")):
+        session_name = session_file.stem
+        if session_name in _accounts_cache:
+            continue
+
+        env_data = _read_legacy_env_file(_legacy_env_path(session_name))
+        raw_api_id = env_data.get("TG_API_ID")
+        raw_api_hash = env_data.get("TG_API_HASH")
+        if not raw_api_id or not raw_api_hash:
+            log.warning(
+                "Legacy session '%s' has no matching .env credentials — skipping migration.",
+                session_name,
+            )
+            continue
+        try:
+            api_id = int(str(raw_api_id).strip())
+        except (TypeError, ValueError):
+            log.warning("Legacy session '%s' has an invalid TG_API_ID — skipping migration.", session_name)
+            continue
+        api_hash = str(raw_api_hash).strip()
+
+        legacy_client = TelegramClient(str(session_file.with_suffix("")), api_id, api_hash)
+        try:
+            await legacy_client.connect()
+            if not await legacy_client.is_user_authorized():
+                log.warning("Legacy session '%s' isn't authorized — leaving it as-is.", session_name)
                 continue
-            key, _, value = line.partition("=")
-            result[key.strip()] = value.strip().strip('"').strip("'")
-    except OSError as exc:
-        log.warning("Could not read %s: %s", path, exc)
-    return result
+            me = await legacy_client.get_me()
+            phone = f"+{me.phone}" if me and me.phone else ""
+            session_string = StringSession.save(legacy_client.session)
+            _upsert_account_record(session_name, api_id, api_hash, phone, session_string)
+            log.info("✓ Migrated '%s' from legacy .session/.env files to accounts.json.", session_name)
+        except Exception as exc:
+            log.error("Could not migrate legacy session '%s': %s", session_name, exc)
+            continue
+        finally:
+            try:
+                await legacy_client.disconnect()
+            except Exception:
+                pass
+
+        _delete_legacy_files(session_name)
 
 
-def _save_env_file(session_name: str, api_id: int, api_hash: str) -> None:
-    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-    path = _env_path(session_name)
-    content = (
-        "# Telegram API credentials for auto_clicker.py\n"
-        "# Keep this file private.\n"
-        f"TG_API_ID={api_id}\n"
-        f"TG_API_HASH={api_hash}\n"
+def _build_client_for_account(record: Dict[str, Any]) -> TelegramClient:
+    """
+    Build a TelegramClient purely from an accounts.json record — always
+    via StringSession, never a file. An empty/missing session_string
+    (e.g. a brand-new record created mid-login) yields a fresh,
+    unauthenticated in-memory session, exactly like an empty StringSession().
+    """
+    session = StringSession(record.get("session_string") or None)
+    return TelegramClient(
+        session,
+        record["api_id"], record["api_hash"],
+        connection_retries=5, retry_delay=3, flood_sleep_threshold=60,
     )
-    path.write_text(content, encoding="utf-8")
-    log.info("Saved credentials file for session '%s'.", session_name)
-
-
-def _resolve_credentials(
-    session_name: str,
-    api_id: Optional[Any] = None,
-    api_hash: Optional[Any] = None,
-) -> Tuple[Optional[int], Optional[str]]:
-    env_data = _read_env_file(_env_path(session_name))
-    raw_api_id = api_id or env_data.get("TG_API_ID") or os.environ.get("TG_API_ID")
-    raw_api_hash = api_hash or env_data.get("TG_API_HASH") or os.environ.get("TG_API_HASH")
-    if not raw_api_id or not raw_api_hash:
-        return None, None
-    try:
-        resolved_api_id = int(str(raw_api_id).strip())
-    except (TypeError, ValueError):
-        return None, None
-    resolved_api_hash = str(raw_api_hash).strip()
-    if not resolved_api_hash:
-        return None, None
-    return resolved_api_id, resolved_api_hash
 
 
 def _account_names() -> List[str]:
     names: Set[str] = set()
-    if SESSIONS_DIR.is_dir():
-        names.update(sf.stem for sf in SESSIONS_DIR.glob("*.session"))
+    names.update(_accounts_cache.keys())
     names.update(_clients.keys())
     names.update(_pending_logins.keys())
     return sorted(names)
@@ -983,6 +1090,7 @@ def _accounts_snapshot() -> List[Dict[str, Any]]:
         client = _clients.get(name)
         meta = _account_meta.get(name, {})
         pending = _pending_logins.get(name)
+        record = _account_record(name)
         connected = False
         if client is not None:
             try:
@@ -992,14 +1100,15 @@ def _accounts_snapshot() -> List[Dict[str, Any]]:
         authorized = bool(meta.get("authorized")) or connected
         accounts.append({
             "name": name,
-            "session_exists": _session_path(name).exists(),
-            "env_exists": _env_path(name).exists(),
+            "session_exists": bool(record and record.get("session_string")),
+            "env_exists": bool(record and record.get("api_id") and record.get("api_hash")),
             "connected": connected,
             "authorized": authorized,
             "pending_state": pending.state if pending else None,
             "user": meta.get("user"),
-            "phone": meta.get("phone"),
+            "phone": meta.get("phone") or (record.get("phone") if record else None),
         })
+
     return accounts
 
 
@@ -1417,7 +1526,17 @@ async def _adopt_client(
     await _ensure_workers(session_name)
 
     if save_env and api_id is not None and api_hash:
-        _save_env_file(session_name, api_id, api_hash)
+        # Persist (or refresh) this account's full record — including its
+        # current StringSession — into accounts.json. This does not create
+        # a new Telegram login/auth key; it just serializes the auth key
+        # `client.session` already holds, so accounts.json alone stays
+        # enough to reconnect later without repeating phone+code+2FA.
+        try:
+            session_string = StringSession.save(client.session)
+            _upsert_account_record(session_name, api_id, api_hash, phone or "", session_string)
+            log.info("Saved credentials for session '%s' to accounts.json.", session_name)
+        except Exception as exc:
+            log.warning("Could not save session_string for '%s' (non-fatal): %s", session_name, exc)
 
     log.info(
         "Session '%s' connected as %s (id=%s, username=%s).",
@@ -1443,22 +1562,18 @@ async def _connect_session(
         if old_client is not None:
             await _safe_disconnect(old_client)
 
-        session_file = _session_path(session_name)
-        if not session_file.exists():
-            return False, "session_file_not_found"
+        record = _account_record(session_name)
+        if record is None:
+            return False, "account_not_found"
 
-        resolved_api_id, resolved_api_hash = _resolve_credentials(session_name, api_id, api_hash)
-        if resolved_api_id is None or resolved_api_hash is None:
+        resolved_api_id = api_id or record.get("api_id")
+        resolved_api_hash = api_hash or record.get("api_hash")
+        if not resolved_api_id or not resolved_api_hash:
             return False, "credentials_not_set"
+        if not record.get("session_string"):
+            return False, "session_unauthorized"
 
-        client = TelegramClient(
-            str(session_file.with_suffix("")),
-            resolved_api_id,
-            resolved_api_hash,
-            connection_retries=5,
-            retry_delay=3,
-            flood_sleep_threshold=60,
-        )
+        client = _build_client_for_account(record)
 
         try:
             await client.connect()
@@ -1468,6 +1583,7 @@ async def _connect_session(
             await _adopt_client(
                 session_name, client,
                 api_id=resolved_api_id, api_hash=resolved_api_hash,
+                save_env=True, phone=record.get("phone"),
             )
             return True, "connected"
         except AuthKeyError:
@@ -1485,14 +1601,12 @@ async def _connect_session(
 
 
 async def boot_clients() -> None:
-    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-    session_files = sorted(SESSIONS_DIR.glob("*.session"))
-    if not session_files:
-        log.warning("No session files found in %s.", SESSIONS_DIR)
+    await _migrate_legacy_sessions()
+    if not _accounts_cache:
+        log.warning("No accounts found in %s.", ACCOUNTS_FILE)
         return
 
-    for session_file in session_files:
-        session_name = session_file.stem
+    for session_name in sorted(_accounts_cache.keys()):
         ok, message = await _connect_session(session_name)
         if not ok:
             log.error("Session '%s' not connected: %s", session_name, message)
@@ -1850,12 +1964,10 @@ async def _api_login_start(request: web.Request) -> web.Response:
             await _stop_workers(session_name)
 
             if force:
-                _delete_account_files(session_name)
-
-        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+                _delete_account_record(session_name)
 
         client = TelegramClient(
-            str(_session_path(session_name).with_suffix("")),
+            StringSession(),
             api_id, api_hash,
             connection_retries=5, retry_delay=3, flood_sleep_threshold=60,
         )
@@ -2058,6 +2170,101 @@ async def _api_login_cancel(request: web.Request) -> web.Response:
     return _json_ok(status="cancelled")
 
 
+async def _api_login_string(request: web.Request) -> web.Response:
+    """
+    Register an account from an already-existing Telethon StringSession —
+    no phone/code/2FA step at all. Verifies the session is actually
+    authorized before saving it, and auto-fills the phone number from
+    Telegram itself.
+    """
+    data = await _read_json(request)
+    if data is None:
+        return _json_error("invalid_json")
+
+    session_name = _sanitize_session_name(data.get("session_name"))
+    if not session_name:
+        return _json_error("invalid_session_name")
+
+    session_string = str(data.get("session_string", "")).strip()
+    if not session_string:
+        return _json_error("invalid_session_string")
+
+    api_hash = str(data.get("api_hash", "")).strip()
+    if not api_hash:
+        return _json_error("invalid_api_hash")
+
+    try:
+        api_id = int(str(data.get("api_id", "")).strip())
+    except (TypeError, ValueError):
+        return _json_error("invalid_api_id")
+    if api_id <= 0:
+        return _json_error("invalid_api_id")
+
+    force = _to_bool(data.get("force"), False)
+
+    async with _account_lock:
+        if session_name in _pending_logins:
+            return _json_error("login_already_pending", status=409)
+
+        existing_client = _clients.get(session_name)
+        if existing_client is not None:
+            existing_authorized = False
+            try:
+                if existing_client.is_connected():
+                    existing_authorized = await existing_client.is_user_authorized()
+            except Exception:
+                existing_authorized = False
+
+            if existing_authorized and not force:
+                meta = _account_meta.get(session_name, {})
+                return _json_ok(status="authorized", account=meta)
+
+            _clients.pop(session_name, None)
+            _account_meta.pop(session_name, None)
+            await _safe_disconnect(existing_client)
+            await _stop_workers(session_name)
+
+            if force:
+                _delete_account_record(session_name)
+        elif not force and session_name in _accounts_cache:
+            return _json_error("account_already_exists", status=409)
+
+        try:
+            client = TelegramClient(
+                StringSession(session_string),
+                api_id, api_hash,
+                connection_retries=5, retry_delay=3, flood_sleep_threshold=60,
+            )
+            await client.connect()
+        except ValueError:
+            return _json_error("invalid_session_string")
+        except AuthKeyError:
+            return _json_error("auth_key_invalid")
+        except FloodWaitError as exc:
+            return _json_error("flood_wait", wait_seconds=exc.seconds)
+        except RPCError as exc:
+            return _json_error(_rpc_message(exc).lower())
+        except Exception as exc:
+            return _json_error(str(exc), status=500)
+
+        if not await client.is_user_authorized():
+            await _safe_disconnect(client)
+            return _json_error("session_unauthorized")
+
+        try:
+            me = await client.get_me()
+            phone = f"+{me.phone}" if me and me.phone else ""
+        except Exception:
+            phone = ""
+
+        account = await _adopt_client(
+            session_name, client,
+            api_id=api_id, api_hash=api_hash,
+            save_env=True, phone=phone,
+        )
+        return _json_ok(status="authorized", account=account)
+
+
 async def _finalize_pending_locked(session_name: str, pending: PendingLogin) -> Dict[str, Any]:
     account = await _adopt_client(
         session_name, pending.client,
@@ -2099,8 +2306,7 @@ async def _api_delete_account(request: web.Request) -> web.Response:
                 for sig, evt, task in entries:
                     task.cancel()
 
-        _delete_account_files(session_name)
-
+        _delete_account_record(session_name)
     log.info("Account '%s' deleted.", session_name)
     return _json_ok(status="deleted")
 
@@ -2335,6 +2541,7 @@ def _build_app() -> web.Application:
     app.router.add_post("/api/accounts/login/password", _api_login_password)
     app.router.add_post("/api/accounts/login/signup", _api_login_signup)
     app.router.add_post("/api/accounts/login/cancel", _api_login_cancel)
+    app.router.add_post("/api/accounts/login/string", _api_login_string)
 
     app.router.add_get("/api/accounts", _api_accounts)
     app.router.add_delete("/api/accounts/{name}", _api_delete_account)
@@ -2381,11 +2588,12 @@ async def _shutdown(runner: web.AppRunner) -> None:
 
 
 async def main() -> None:
-    global _config_cache
+    global _config_cache, _accounts_cache
 
     SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
     _config_cache = _load_config_sync()
     _rebuild_rule_index()
+    _accounts_cache = _load_accounts_sync()
 
     app = _build_app()
     runner = web.AppRunner(app, access_log=None)

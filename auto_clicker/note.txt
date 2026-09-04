@@ -1,3 +1,17 @@
 هدف اولیه:نجات و فارم گربه خیابونی در گروه ها از بات @MeowieQBot
 
 نتیجه:موفقیت
+
+---
+بروزرسانی (String Session):
+- همه‌ی اطلاعات اکانت‌ها (api_id, api_hash, phone, و از این به بعد session_string)
+  حالا در یک فایل accounts.json نگه‌داری می‌شن؛ دیگه فایل‌های sessions/NAME.session و
+  sessions/NAME.env ساخته یا خونده نمی‌شن.
+- روش جدید: امکان افزودن اکانت مستقیم با یک string session موجود (بدون نیاز به
+  کد/رمز دو مرحله‌ای) هم به بک‌اند (/api/accounts/login/string) و هم به رابط وب
+  (تب "String Session" توی ویزارد Add Account) اضافه شد.
+- اگه از نسخه‌ی قدیمی‌تر (با sessions/NAME.session و sessions/NAME.env) آپگرید کنید،
+  اولین بار که برنامه بالا میاد، هر اکانت قدیمی خودکار به accounts.json مهاجرت داده
+  می‌شه و فایل‌های قدیمی حذف می‌شن — نیازی به لاگین مجدد نیست.
+- منطق rule/click/worker/session_name بدون تغییر باقی مونده؛ فقط لایه‌ی ذخیره‌سازی
+  اکانت عوض شده.

@@ -637,7 +637,7 @@
             logFilter: 'all'
         };
 
-        const wizard = { modal: null, session: '', payload: null };
+        const wizard = { modal: null, session: '', payload: null, method: 'login' };
         let logSource = null;
         let ruleClipboard = null;
         let searchQuery = '';
@@ -1811,7 +1811,7 @@
 
         /* ── Account login wizard ───────────────────────────────────── */
         function openAddAccountWizard() {
-            wizard.session = ''; wizard.payload = null;
+            wizard.session = ''; wizard.payload = null; wizard.method = 'login';
             wizard.modal = openModal('', { wide: true, dismissable: false });
             renderWizardStep1();
         }
@@ -1820,6 +1820,28 @@
             if (!wizard.modal) return;
             wizard.modal.modal.innerHTML = html;
             wizard.modal.modal.querySelectorAll('[data-wizard-close]').forEach(btn => btn.addEventListener('click', cancelWizard));
+        }
+
+        function wizardMethodTabs(active) {
+            return `
+                <div class="wizard-steps" style="margin-bottom:14px;">
+                    <span class="wizard-step ${active === 'login' ? 'active' : ''}" style="cursor:pointer;" data-wizard-method="login">Full Login</span>
+                    <span class="wizard-step ${active === 'string' ? 'active' : ''}" style="cursor:pointer;" data-wizard-method="string">String Session</span>
+                </div>`;
+        }
+
+        function bindWizardMethodTabs() {
+            if (!wizard.modal) return;
+            wizard.modal.modal.querySelectorAll('[data-wizard-method]').forEach(el => {
+                el.addEventListener('click', () => {
+                    const method = el.getAttribute('data-wizard-method');
+                    if (method === wizard.method) return;
+                    wizard.method = method;
+                    wizard.payload = null;
+                    if (method === 'login') renderWizardStep1();
+                    else renderWizardStringStep();
+                });
+            });
         }
 
         function wizardHeader(step, title, subtitle) {
@@ -1839,7 +1861,7 @@
 
         function renderWizardStep1() {
             const p = wizard.payload || {};
-            const html = wizardHeader(1, 'Add Telegram Account', 'Enter your API credentials and phone number. A login code will be requested next.') + `
+            const html = wizardMethodTabs('login') + wizardHeader(1, 'Add Telegram Account', 'Enter your API credentials and phone number. A login code will be requested next.') + `
                 <form id="wizard-form" class="form">
                     <div class="form-grid">
                         <div><label>Session Name<span class="req">*</span></label>
@@ -1851,16 +1873,12 @@
                         <div><label>API Hash<span class="req">*</span></label>
                             <input id="w-api-hash" type="text" placeholder="123abc…" value="${esc(p.api_hash || '')}" required></div>
                     </div>
-                    <label class="checkbox">
-                        <input id="w-save-env" type="checkbox" ${p.save_env !== false ? 'checked' : ''}>
-                        Store API credentials in sessions/&lt;name&gt;.env
-                    </label>
                     <details>
                         <summary>Advanced options</summary>
                         <div style="margin-top: 10px;">
                             <label class="checkbox">
                                 <input id="w-force" type="checkbox" ${p.force ? 'checked' : ''}>
-                                Delete existing session and log in again (force)
+                                Delete existing account and log in again (force)
                             </label>
                         </div>
                     </details>
@@ -1870,6 +1888,7 @@
                     </div>
                 </form>`;
             setWizardContent(html);
+            bindWizardMethodTabs();
             wizard.modal.modal.querySelector('#wizard-form').addEventListener('submit', async event => {
                 event.preventDefault();
                 const payload = {
@@ -1877,7 +1896,7 @@
                     phone: wizard.modal.modal.querySelector('#w-phone').value.trim(),
                     api_id: wizard.modal.modal.querySelector('#w-api-id').value.trim(),
                     api_hash: wizard.modal.modal.querySelector('#w-api-hash').value.trim(),
-                    save_env: wizard.modal.modal.querySelector('#w-save-env').checked,
+                    save_env: true,
                     force: wizard.modal.modal.querySelector('#w-force').checked
                 };
                 if (!payload.session_name || !payload.phone || !payload.api_id || !payload.api_hash) {
@@ -1892,6 +1911,73 @@
                 } catch (err) {
                     if (err.data && err.data.state) { wizard.session = payload.session_name; handleLoginState(err.data.state); }
                     else toast(errorMessage(err), 'error');
+                } finally { setLoading(btn, false); }
+            });
+        }
+
+        function renderWizardStringStep() {
+            const p = wizard.payload || {};
+            const html = wizardMethodTabs('string') + `
+                <div class="modal-header">
+                    <div><h3>Import via String Session</h3>
+                    <p>Paste a Telethon StringSession you already have. No code or 2FA is needed — this doesn't create a new Telegram login, it just reuses the one that string already represents. Phone number is auto-detected.</p></div>
+                    <button class="icon-btn" data-wizard-close>✕</button>
+                </div>
+                <form id="wizard-string-form" class="form">
+                    <div class="form-grid">
+                        <div><label>Session Name<span class="req">*</span></label>
+                            <input id="ws-session" type="text" placeholder="account" value="${esc(p.session_name || '')}" pattern="[A-Za-z0-9_-]{1,64}" required></div>
+                        <div><label>API ID<span class="req">*</span></label>
+                            <input id="ws-api-id" type="number" placeholder="123321456654" value="${esc(p.api_id || '')}" required></div>
+                    </div>
+                    <div><label>API Hash<span class="req">*</span></label>
+                        <input id="ws-api-hash" type="text" placeholder="123abc…" value="${esc(p.api_hash || '')}" required></div>
+                    <div><label>String Session<span class="req">*</span></label>
+                        <textarea id="ws-session-string" rows="4" placeholder="1BVtsO..." style="width:100%;resize:vertical;font-family:monospace;font-size:12px;" required>${esc(p.session_string || '')}</textarea></div>
+                    <details>
+                        <summary>Advanced options</summary>
+                        <div style="margin-top: 10px;">
+                            <label class="checkbox">
+                                <input id="ws-force" type="checkbox" ${p.force ? 'checked' : ''}>
+                                Delete existing account and replace it (force)
+                            </label>
+                        </div>
+                    </details>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary" id="ws-start">Import Account</button>
+                        <button type="button" class="btn" data-wizard-close>Cancel</button>
+                    </div>
+                </form>`;
+            setWizardContent(html);
+            bindWizardMethodTabs();
+            wizard.modal.modal.querySelector('#wizard-string-form').addEventListener('submit', async event => {
+                event.preventDefault();
+                const payload = {
+                    session_name: wizard.modal.modal.querySelector('#ws-session').value.trim(),
+                    api_id: wizard.modal.modal.querySelector('#ws-api-id').value.trim(),
+                    api_hash: wizard.modal.modal.querySelector('#ws-api-hash').value.trim(),
+                    session_string: wizard.modal.modal.querySelector('#ws-session-string').value.trim(),
+                    force: wizard.modal.modal.querySelector('#ws-force').checked
+                };
+                if (!payload.session_name || !payload.api_id || !payload.api_hash || !payload.session_string) {
+                    toast('All required fields must be filled.', 'error'); return;
+                }
+                wizard.payload = payload; wizard.session = payload.session_name;
+                const btn = wizard.modal.modal.querySelector('#ws-start');
+                setLoading(btn, true, 'Verifying session…');
+                try {
+                    const data = await api('/api/accounts/login/string', { method: 'POST', body: payload });
+                    if (data.status === 'authorized') {
+                        toast('Account imported and connected successfully.', 'success');
+                        const modal = wizard.modal;
+                        wizard.modal = null; wizard.session = ''; wizard.payload = null;
+                        modal.close();
+                        refreshStatus(); refreshConfig();
+                    } else {
+                        toast(`Unexpected response: ${data.status}`, 'error');
+                    }
+                } catch (err) {
+                    toast(errorMessage(err), 'error');
                 } finally { setLoading(btn, false); }
             });
         }

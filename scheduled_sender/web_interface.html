@@ -368,27 +368,50 @@
       <button class="modal-close" onclick="closeModal('modal-add-account')">✕</button>
     </div>
     <div class="modal-body">
-      <div class="step-indicator">
-        <div class="step-dot active" id="sdot-1"></div>
-        <div class="step-dot" id="sdot-2"></div>
-        <div class="step-dot" id="sdot-3"></div>
+      <div class="mode-tabs" id="aa-method-tabs">
+        <div class="mode-tab active" id="aa-tab-login" onclick="switchAddMethod('login')">Full Login</div>
+        <div class="mode-tab" id="aa-tab-string" onclick="switchAddMethod('string')">String Session</div>
       </div>
-      <div class="step active" id="auth-step-1">
-        <p style="font-size:12px;color:var(--text2);">Get your API credentials at <a href="https://my.telegram.org" target="_blank" style="color:var(--accent)">my.telegram.org</a>.</p>
-        <div class="form-grid">
-          <div class="field"><label>Account Name</label><input id="aa-name" placeholder="e.g. main_account"></div>
-          <div class="field"><label>Phone Number</label><input id="aa-phone" placeholder="+1234567890"></div>
-          <div class="field"><label>API ID</label><input type="number" id="aa-api-id" placeholder="12345678"></div>
-          <div class="field"><label>API Hash</label><input id="aa-api-hash" placeholder="abc123..."></div>
+
+      <!-- Method 1: full phone/code/2FA login -->
+      <div id="aa-method-login">
+        <div class="step-indicator">
+          <div class="step-dot active" id="sdot-1"></div>
+          <div class="step-dot" id="sdot-2"></div>
+          <div class="step-dot" id="sdot-3"></div>
+        </div>
+        <div class="step active" id="auth-step-1">
+          <p style="font-size:12px;color:var(--text2);">Get your API credentials at <a href="https://my.telegram.org" target="_blank" style="color:var(--accent)">my.telegram.org</a>.</p>
+          <div class="form-grid">
+            <div class="field"><label>Account Name</label><input id="aa-name" placeholder="e.g. main_account"></div>
+            <div class="field"><label>Phone Number</label><input id="aa-phone" placeholder="+1234567890"></div>
+            <div class="field"><label>API ID</label><input type="number" id="aa-api-id" placeholder="12345678"></div>
+            <div class="field"><label>API Hash</label><input id="aa-api-hash" placeholder="abc123..."></div>
+          </div>
+        </div>
+        <div class="step" id="auth-step-2">
+          <p style="font-size:12px;color:var(--text2);">A code was sent to your Telegram app.</p>
+          <div class="field"><label>Verification Code</label><input id="aa-code" placeholder="12345" maxlength="10"></div>
+        </div>
+        <div class="step" id="auth-step-3">
+          <p style="font-size:12px;color:var(--text2);">2FA is enabled on this account.</p>
+          <div class="field"><label>2FA Password</label><input type="text" id="aa-password" placeholder="Your 2FA password"></div>
         </div>
       </div>
-      <div class="step" id="auth-step-2">
-        <p style="font-size:12px;color:var(--text2);">A code was sent to your Telegram app.</p>
-        <div class="field"><label>Verification Code</label><input id="aa-code" placeholder="12345" maxlength="10"></div>
-      </div>
-      <div class="step" id="auth-step-3">
-        <p style="font-size:12px;color:var(--text2);">2FA is enabled on this account.</p>
-        <div class="field"><label>2FA Password</label><input type="password" id="aa-password" placeholder="••••••••"></div>
+
+      <!-- Method 2: import an already-existing string session, no login at all -->
+      <div id="aa-method-string" style="display:none;">
+        <p style="font-size:12px;color:var(--text2);">
+          Paste a Telethon <b>StringSession</b> you already have. No code or 2FA is
+          needed — this doesn't create a new Telegram login, it just reuses the one
+          that string already represents. Phone number is auto-detected.
+        </p>
+        <div class="form-grid">
+          <div class="field"><label>Account Name</label><input id="as-name" placeholder="e.g. main_account"></div>
+          <div class="field"><label>API ID</label><input type="number" id="as-api-id" placeholder="12345678"></div>
+          <div class="field" style="grid-column:1/-1;"><label>API Hash</label><input id="as-api-hash" placeholder="abc123..."></div>
+          <div class="field" style="grid-column:1/-1;"><label>String Session</label><textarea id="as-session-string" rows="4" placeholder="1BVtsO..." style="resize:vertical;font-family:monospace;font-size:11px;padding:8px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;color:var(--text);"></textarea></div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -575,9 +598,25 @@ async function deleteAccount(name) {
 // ── Auth flow ─────────────────────────────────────────────────────────────────
 
 function openAddAccountModal() {
-  ['aa-name','aa-phone','aa-api-id','aa-api-hash','aa-code','aa-password'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['aa-name','aa-phone','aa-api-id','aa-api-hash','aa-code','aa-password','as-name','as-api-id','as-api-hash','as-session-string'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  switchAddMethod('login');
   setAuthStep(1);
   openModal('modal-add-account');
+}
+
+function switchAddMethod(method) {
+  document.getElementById('aa-tab-login').classList.toggle('active', method === 'login');
+  document.getElementById('aa-tab-string').classList.toggle('active', method === 'string');
+  document.getElementById('aa-method-login').style.display  = method === 'login'  ? '' : 'none';
+  document.getElementById('aa-method-string').style.display = method === 'string' ? '' : 'none';
+  const btn = document.getElementById('btn-auth-action');
+  btn.disabled = false;
+  if (method === 'string') {
+    btn.innerHTML = 'Import Account';
+    btn.onclick = importStringSession;
+  } else {
+    setAuthStep(1);
+  }
 }
 
 function setAuthStep(step) {
@@ -639,6 +678,24 @@ async function verifyPassword() {
     closeModal('modal-add-account');
     await loadAccounts();
   } catch (e) { toast(e.message, 'error'); setBtn('btn-auth-action', false); }
+}
+
+async function importStringSession() {
+  const name           = document.getElementById('as-name').value.trim();
+  const apiId          = document.getElementById('as-api-id').value.trim();
+  const apiHash        = document.getElementById('as-api-hash').value.trim();
+  const sessionString  = document.getElementById('as-session-string').value.trim();
+  if (!name || !apiId || !apiHash || !sessionString) { toast('All fields are required', 'error'); return; }
+  setBtn('btn-auth-action', true, 'Importing...');
+  try {
+    const res = await apiCall('/api/accounts/import_string', { method: 'POST', body: JSON.stringify({ name, api_id: parseInt(apiId), api_hash: apiHash, session_string: sessionString }) });
+    toast(res.phone ? `Account added! (${res.phone})` : 'Account added!', 'success');
+    closeModal('modal-add-account');
+    await loadAccounts();
+  } catch (e) {
+    toast(e.message, 'error');
+    setBtn('btn-auth-action', false, 'Import Account');
+  }
 }
 
 // ── Config display ────────────────────────────────────────────────────────────
